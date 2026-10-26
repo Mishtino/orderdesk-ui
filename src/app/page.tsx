@@ -32,14 +32,15 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8010";
+  // Production Render Backend URL
+  const API_BASE_URL = "https://orderdesk-backend-9gu2.onrender.com";
 
   const fetchData = async () => {
     setLoading(true);
 
     try {
       const tokenRes = await axios.post(`${API_BASE_URL}/auth/token`, {
-        user_id: "admin_user_1",
+        user_id: "demo-admin",
         organization_id: "123e4567-e89b-12d3-a456-426614174000",
       });
 
