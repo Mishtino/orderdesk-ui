@@ -18,13 +18,17 @@ interface Product {
 
 interface Order {
   id: string;
+  invoice_number?: string;
   client_name: string;
-  total_amount: number;
+  client_email?: string;
+  item_subtotal: number;
   shipping_fee: number;
+  total_amount: number;
   status: string;
   payment_status: string;
   fulfillment_type: string;
   delivery_city: string;
+  created_at?: string;
 }
 
 interface Customer {
@@ -45,6 +49,7 @@ export default function SupplierDashboard() {
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [showCsvModal, setShowCsvModal] = useState<boolean>(false);
   const [showCustomerModal, setShowCustomerModal] = useState<boolean>(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Order | null>(null);
   const [activeTab, setActiveTab] = useState<"stock" | "customers" | "profile" | "users">("stock");
   const [userEmail, setUserEmail] = useState<string>("");
   const [orgName, setOrgName] = useState<string>("");
@@ -141,6 +146,10 @@ export default function SupplierDashboard() {
     }
   };
 
+  const handlePrintInvoice = () => {
+    window.print();
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("orderdesk_user_email");
     localStorage.removeItem("orderdesk_org_name");
@@ -156,7 +165,6 @@ export default function SupplierDashboard() {
   }
 
   const lowStockItems = products.filter((p) => p.stock_quantity <= (p.reorder_level || 10));
-  const ordersPlaced = orders.length;
   const ordersShipped = orders.filter((o) => o.status === "SHIPPED" || o.status === "DELIVERED").length;
 
   return (
@@ -164,7 +172,7 @@ export default function SupplierDashboard() {
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* Top Free Trial Banner */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm print:hidden">
           <div className="flex items-center gap-3">
             <span className="bg-white/20 text-xs font-black uppercase px-2.5 py-1 rounded-md">
               Trial Active
@@ -191,7 +199,7 @@ export default function SupplierDashboard() {
 
         {/* Low-Stock Alert Banner */}
         {lowStockItems.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 shadow-sm">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 shadow-sm print:hidden">
             <div className="flex items-center gap-3">
               <span className="bg-amber-500 text-white font-black text-xs px-2.5 py-1 rounded-full animate-pulse">
                 ⚠️ Low Stock Alert
@@ -211,7 +219,7 @@ export default function SupplierDashboard() {
         )}
 
         {/* Header & Main Menu Navigation */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-4">
             <Image 
               src="/orderdesk-icon.svg" 
@@ -267,7 +275,7 @@ export default function SupplierDashboard() {
         </div>
 
         {/* Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 print:hidden">
           <div
             onClick={() => setShowCsvModal(true)}
             className="bg-indigo-50 hover:bg-indigo-100/80 cursor-pointer rounded-3xl p-6 border border-indigo-200 transition shadow-sm flex flex-col justify-between"
@@ -299,7 +307,7 @@ export default function SupplierDashboard() {
 
         {/* Tab 1: Stock Management & Orders */}
         {activeTab === "stock" && (
-          <div className="grid lg:grid-cols-2 gap-8">
+          <div className="grid lg:grid-cols-2 gap-8 print:hidden">
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-slate-900">Live Stock Management</h2>
@@ -357,6 +365,7 @@ export default function SupplierDashboard() {
               )}
             </div>
 
+            {/* Wholesale Orders Pipeline */}
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-slate-900">Wholesale Orders Pipeline</h2>
@@ -374,10 +383,11 @@ export default function SupplierDashboard() {
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 text-xs text-slate-400 font-bold uppercase tracking-wider">
+                        <th className="pb-3">Invoice</th>
                         <th className="pb-3">Client</th>
-                        <th className="pb-3">Fulfillment</th>
                         <th className="pb-3">Total</th>
-                        <th className="pb-3 text-right">Pipeline Status</th>
+                        <th className="pb-3">Status</th>
+                        <th className="pb-3 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -392,17 +402,27 @@ export default function SupplierDashboard() {
 
                         return (
                           <tr key={o.id} className="hover:bg-slate-50/50 transition">
+                            <td className="py-3 font-mono font-bold text-slate-800 text-xs">
+                              {o.invoice_number || "INV-109012"}
+                            </td>
                             <td className="py-3 font-bold text-slate-900">{o.client_name}</td>
-                            <td className="py-3 text-xs text-slate-500">{o.fulfillment_type} ({o.delivery_city})</td>
                             <td className="py-3 font-semibold text-slate-900">${o.total_amount.toFixed(2)}</td>
-                            <td className="py-3 text-right">
+                            <td className="py-3">
                               <button
                                 onClick={() => handleStatusChange(o.id, o.status)}
-                                className={`text-xs px-3 py-1 rounded-full font-bold shadow-sm transition hover:scale-105 ${
+                                className={`text-[10px] px-2.5 py-1 rounded-full font-bold shadow-sm transition hover:scale-105 ${
                                   statusColors[o.status.toUpperCase()] || "bg-slate-100 text-slate-700"
                                 }`}
                               >
                                 {o.status} →
+                              </button>
+                            </td>
+                            <td className="py-3 text-right">
+                              <button
+                                onClick={() => setSelectedInvoice(o)}
+                                className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg transition shadow-sm"
+                              >
+                                PDF Invoice
                               </button>
                             </td>
                           </tr>
@@ -416,9 +436,9 @@ export default function SupplierDashboard() {
           </div>
         )}
 
-        {/* Tab 2: Feature #3 Customer Accounts & Price Tiers */}
+        {/* Tab 2: Customers */}
         {activeTab === "customers" && (
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-6">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-6 print:hidden">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">Retailer Accounts & Wholesale Price Tiers</h2>
@@ -475,7 +495,7 @@ export default function SupplierDashboard() {
 
         {/* Tab 3: Profile */}
         {activeTab === "profile" && (
-          <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4">
+          <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4 print:hidden">
             <h2 className="text-xl font-bold text-slate-900">Supplier Profile</h2>
             <div className="space-y-2 text-sm text-slate-600">
               <p><strong>Organization Name:</strong> {orgName}</p>
@@ -494,7 +514,7 @@ export default function SupplierDashboard() {
 
         {/* Tab 4: Users */}
         {activeTab === "users" && (
-          <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4">
+          <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4 print:hidden">
             <h2 className="text-xl font-bold text-slate-900">User Management</h2>
             <p className="text-sm text-slate-500">Manage team seats and permissions for your supplier organization.</p>
             <div className="p-4 bg-slate-50 rounded-2xl text-xs font-mono text-slate-800">
@@ -504,6 +524,101 @@ export default function SupplierDashboard() {
         )}
 
       </div>
+
+      {/* Feature #4: PDF Invoice / Delivery Note Modal */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-2xl border border-slate-200 shadow-2xl relative space-y-6">
+            <div className="flex items-center justify-between border-b pb-4 print:hidden">
+              <div className="flex items-center gap-2">
+                <Image src="/orderdesk-icon.svg" alt="Logo" width={32} height={32} />
+                <span className="font-extrabold text-slate-900 text-lg">OrderDesk PDF Invoice</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrintInvoice}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm"
+                >
+                  🖨️ Print / Save PDF
+                </button>
+                <button
+                  onClick={() => setSelectedInvoice(null)}
+                  className="text-slate-400 hover:text-slate-600 font-bold text-lg px-2"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Tax Invoice printable document */}
+            <div id="printable-invoice" className="space-y-6 text-slate-800 font-sans p-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900">{orgName}</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Wholesale & Logistics Supplier Portal</p>
+                  <p className="text-xs text-slate-500">{userEmail}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">TAX INVOICE</span>
+                  <h3 className="text-lg font-mono font-black text-slate-900 mt-1">
+                    {selectedInvoice.invoice_number || "INV-109012"}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Date: {new Date().toLocaleDateString("en-GB")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+                <div>
+                  <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px]">BILLED TO</span>
+                  <p className="font-bold text-slate-900 text-sm mt-1">{selectedInvoice.client_name}</p>
+                  <p className="text-slate-500">{selectedInvoice.client_email || "client@orderdesk.co.zw"}</p>
+                </div>
+                <div>
+                  <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px]">FULFILLMENT LOGISTICS</span>
+                  <p className="font-bold text-slate-900 mt-1">{selectedInvoice.fulfillment_type}</p>
+                  <p className="text-slate-500">Destination: {selectedInvoice.delivery_city}</p>
+                </div>
+              </div>
+
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b-2 border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
+                    <th className="pb-2">Description</th>
+                    <th className="pb-2 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  <tr>
+                    <td className="py-3 font-bold text-slate-800">Wholesale Goods Shipment Bundle</td>
+                    <td className="py-3 text-right font-semibold text-slate-900">${selectedInvoice.item_subtotal.toFixed(2)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 text-slate-600">Aisle Freight / Express Courier Fee</td>
+                    <td className="py-3 text-right font-semibold text-slate-900">${selectedInvoice.shipping_fee.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="flex justify-between items-center border-t-2 border-slate-200 pt-4">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">PAYMENT STATUS</span>
+                  <div className="mt-1">
+                    <span className="bg-emerald-100 text-emerald-800 font-black text-xs px-3 py-1 rounded-full uppercase">
+                      {selectedInvoice.payment_status || "PAID"}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">TOTAL AMOUNT DUE</span>
+                  <p className="text-2xl font-black text-slate-900 mt-0.5">${selectedInvoice.total_amount.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Register Customer Modal */}
       {showCustomerModal && (
