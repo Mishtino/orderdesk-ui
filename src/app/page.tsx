@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import CsvUploader from "./components/CsvUploader";
 
 interface Product {
@@ -37,7 +38,6 @@ export default function SupplierDashboard() {
   const [orgName, setOrgName] = useState<string>("");
 
   useEffect(() => {
-    // Check if user is logged in; if not, redirect to /login immediately
     const storedEmail = localStorage.getItem("orderdesk_user_email");
     const storedOrg = localStorage.getItem("orderdesk_org_name");
 
@@ -93,7 +93,7 @@ export default function SupplierDashboard() {
     <div className="min-h-screen bg-slate-50/50 p-6 sm:p-10 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Top Trial Banner */}
+        {/* Top Free Trial Banner */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="bg-white/20 text-xs font-black uppercase px-2.5 py-1 rounded-md">
@@ -119,15 +119,24 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Header & Main Menu Navigation */}
+        {/* Header & Navigation Bar */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">
-              Supplier Portal Dashboard
-            </span>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-0.5">
-              OrderDesk Operations Center
-            </h1>
+          <div className="flex items-center gap-4">
+            <Image 
+              src="/orderdesk-icon.svg" 
+              alt="OrderDesk Icon" 
+              width={48} 
+              height={48} 
+              className="h-12 w-12 object-contain hidden sm:block" 
+            />
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">
+                Supplier Portal Dashboard
+              </span>
+              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-0.5">
+                OrderDesk Operations Center
+              </h1>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
@@ -158,7 +167,7 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Diagram Metric Pipeline */}
+        {/* Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <div
             onClick={() => setShowCsvModal(true)}
@@ -308,7 +317,7 @@ export default function SupplierDashboard() {
 
       </div>
 
-      {/* CSV Upload Modal */}
+      {/* CSV Uploader Modal */}
       {showCsvModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-slate-200 shadow-xl relative">

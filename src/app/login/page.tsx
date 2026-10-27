@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,7 +36,19 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans">
       <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-800">
-        <div className="text-center mb-8">
+        
+        {/* Brand Logo & Header */}
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-4">
+            <Image 
+              src="/orderdesk-logo-dark.svg" 
+              alt="OrderDesk Logo" 
+              width={180} 
+              height={50} 
+              priority
+              className="h-12 w-auto object-contain" 
+            />
+          </div>
           <span className="text-xs font-bold tracking-widest text-indigo-600 uppercase">
             OrderDesk B2B SaaS
           </span>
