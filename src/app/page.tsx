@@ -1,234 +1,236 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import axios from "axios";
-import {
-  AlertTriangle,
-  Package,
-  Plus,
-  RefreshCw,
-  ShoppingBag,
-  TrendingUp,
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import CsvUploader from "./components/CsvUploader";
 
 interface Product {
   id: string;
   sku: string;
   title: string;
-  stock_quantity: number;
   wholesale_price: number;
+  stock_quantity: number;
+  weight_kg: number;
 }
 
 interface Order {
   id: string;
   client_name: string;
-  status: string;
   total_amount: number;
-  created_at?: string;
+  shipping_fee: number;
+  status: string;
+  fulfillment_type: string;
+  delivery_city: string;
 }
 
-export default function Dashboard() {
+export default function DashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [showCsvModal, setShowCsvModal] = useState<boolean>(false);
 
-  // Production Render Backend URL
-  const API_BASE_URL = "https://orderdesk-backend-9gu2.onrender.com";
-
-  const fetchData = async () => {
+  const fetchDashboardData = async () => {
     setLoading(true);
-
     try {
-      const tokenRes = await axios.post(`${API_BASE_URL}/auth/token`, {
-        user_id: "demo-admin",
-        organization_id: "123e4567-e89b-12d3-a456-426614174000",
-      });
-
-      const token = tokenRes.data.access_token;
-      const authHeaders = { Authorization: `Bearer ${token}` };
-
       const [prodRes, orderRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/products`, { headers: authHeaders }),
-        axios.get(`${API_BASE_URL}/orders`, { headers: authHeaders }),
+        fetch("https://orderdesk-backend-9gu2.onrender.com/products"),
+        fetch("https://orderdesk-backend-9gu2.onrender.com/orders")
       ]);
 
-      setProducts(prodRes.data.data || []);
-      setOrders(orderRes.data.data || []);
+      const prodData = await prodRes.json();
+      const orderData = await orderRes.json();
+
+      setProducts(prodData.data || []);
+      setOrders(orderData.data || []);
     } catch (error) {
-      console.error("Failed to connect to FastAPI engine:", error);
+      console.error("Failed to load dashboard data:", error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    fetchDashboardData();
   }, []);
 
-  const totalRevenue = orders.reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
-  const lowStockCount = products.filter((product) => product.stock_quantity <= 20).length;
+  const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const activeSKUs = products.length;
+  const lowStockAlerts = products.filter((p) => p.stock_quantity < 5).length;
 
   return (
-    <main className="min-h-screen p-4 md:p-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-indigo-600">
-                OrderDesk Supplier Portal
-              </p>
-              <h1 className="mt-2 text-3xl font-bold text-slate-900">
-                Real-time inventory orchestration
-              </h1>
-            </div>
-
+    <div className="min-h-screen bg-slate-50/50 p-6 sm:p-10 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
+        
+        {/* Header Section */}
+        <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">
+              OrderDesk Supplier Portal
+            </span>
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
+              Real-time inventory orchestration
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
             <button
-              type="button"
-              onClick={fetchData}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-700"
+              onClick={() => setShowCsvModal(true)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2.5 rounded-xl transition shadow-sm text-sm"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh Data
+              + Bulk Upload CSV
+            </button>
+            <button
+              onClick={fetchDashboardData}
+              disabled={loading}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-semibold px-5 py-2.5 rounded-xl transition text-sm disabled:opacity-50"
+            >
+              {loading ? "Refreshing..." : "↻ Refresh Data"}
             </button>
           </div>
-        </header>
+        </div>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            title="Total Revenue"
-            value={`$${totalRevenue.toFixed(2)}`}
-            icon={<TrendingUp className="h-5 w-5" />}
-            accent="bg-emerald-100 text-emerald-700"
-          />
-          <MetricCard
-            title="Total Orders"
-            value={String(orders.length)}
-            icon={<ShoppingBag className="h-5 w-5" />}
-            accent="bg-blue-100 text-blue-700"
-          />
-          <MetricCard
-            title="Active SKUs"
-            value={String(products.length)}
-            icon={<Package className="h-5 w-5" />}
-            accent="bg-violet-100 text-violet-700"
-          />
-          <MetricCard
-            title="Low Stock Alerts"
-            value={String(lowStockCount)}
-            icon={<AlertTriangle className="h-5 w-5" />}
-            accent="bg-amber-100 text-amber-700"
-          />
-        </section>
+        {/* Analytics Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Revenue</span>
+            <p className="text-3xl font-black text-slate-900 mt-2">${totalRevenue.toFixed(2)}</p>
+          </div>
 
-        <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-900">Live SKU Inventory</h2>
-              <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
-                <Plus className="h-3.5 w-3.5" />
-                Inventory Sync
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Orders</span>
+            <p className="text-3xl font-black text-slate-900 mt-2">{orders.length}</p>
+          </div>
+
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active SKUs</span>
+            <p className="text-3xl font-black text-slate-900 mt-2">{activeSKUs}</p>
+          </div>
+
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Low Stock Alerts</span>
+            <p className={`text-3xl font-black mt-2 ${lowStockAlerts > 0 ? "text-amber-600" : "text-slate-900"}`}>
+              {lowStockAlerts}
+            </p>
+          </div>
+        </div>
+
+        {/* Data Tables Section */}
+        <div className="grid lg:grid-cols-2 gap-8">
+          
+          {/* SKU Inventory Table */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-slate-900">Live SKU Inventory</h2>
+              <span className="text-xs bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full">
+                {products.length} Items
               </span>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200 text-left">
-                <thead className="bg-slate-50">
-                  <tr className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                    <th className="px-4 py-3">SKU</th>
-                    <th className="px-4 py-3">Title</th>
-                    <th className="px-4 py-3">Price</th>
-                    <th className="px-4 py-3">Stock</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
-                  {products.map((product) => (
-                    <tr key={product.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium text-slate-800">{product.sku}</td>
-                      <td className="px-4 py-3 text-slate-600">{product.title}</td>
-                      <td className="px-4 py-3 text-slate-700">${product.wholesale_price.toFixed(2)}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            product.stock_quantity <= 20
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-emerald-100 text-emerald-700"
-                          }`}
-                        >
-                          {product.stock_quantity} units
-                        </span>
-                      </td>
+            {products.length === 0 ? (
+              <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                <p className="text-slate-500 text-sm font-medium">No products available yet.</p>
+                <button
+                  onClick={() => setShowCsvModal(true)}
+                  className="mt-4 text-xs font-bold text-indigo-600 hover:underline"
+                >
+                  Upload CSV Spreadsheet
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-xs text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="pb-3">SKU</th>
+                      <th className="pb-3">Title</th>
+                      <th className="pb-3">Price</th>
+                      <th className="pb-3 text-right">Stock</th>
                     </tr>
-                  ))}
-                  {!products.length && !loading && (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                        No products available yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {products.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                        <td className="py-3.5 font-bold text-slate-900">{p.sku}</td>
+                        <td className="py-3.5 text-slate-600">{p.title}</td>
+                        <td className="py-3.5 font-semibold text-slate-900">${p.wholesale_price.toFixed(2)}</td>
+                        <td className="py-3.5 text-right font-bold">
+                          <span className={p.stock_quantity < 5 ? "text-amber-600" : "text-slate-900"}>
+                            {p.stock_quantity} units
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-900">Recent Wholesale Orders</h2>
-
-            <div className="mt-5 space-y-3">
-              {orders.map((order) => (
-                <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-800">{order.client_name}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">
-                        {order.created_at ? new Date(order.created_at).toLocaleDateString() : "New order"}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-                      {order.status}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 text-lg font-semibold text-slate-900">
-                    ${Number(order.total_amount || 0).toFixed(2)}
-                  </div>
-                </div>
-              ))}
-
-              {!orders.length && !loading && (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
-                  No orders placed yet.
-                </div>
-              )}
+          {/* Wholesale Orders Table */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-slate-900">Recent Wholesale Orders</h2>
+              <span className="text-xs bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full">
+                {orders.length} Orders
+              </span>
             </div>
+
+            {orders.length === 0 ? (
+              <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                <p className="text-slate-500 text-sm font-medium">No orders placed yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-xs text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="pb-3">Client</th>
+                      <th className="pb-3">Fulfillment</th>
+                      <th className="pb-3">Total</th>
+                      <th className="pb-3 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {orders.map((o) => (
+                      <tr key={o.id} className="hover:bg-slate-50/50 transition">
+                        <td className="py-3.5 font-bold text-slate-900">{o.client_name}</td>
+                        <td className="py-3.5 text-xs text-slate-500">
+                          {o.fulfillment_type} ({o.delivery_city})
+                        </td>
+                        <td className="py-3.5 font-semibold text-slate-900">${o.total_amount.toFixed(2)}</td>
+                        <td className="py-3.5 text-right">
+                          <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold">
+                            {o.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        </section>
-      </div>
-    </main>
-  );
-}
 
-function MetricCard({
-  title,
-  value,
-  icon,
-  accent,
-}: {
-  title: string;
-  value: string;
-  icon: React.ReactNode;
-  accent: string;
-}) {
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div className={`rounded-2xl p-2 ${accent}`}>{icon}</div>
+        </div>
       </div>
 
-      <div className="mt-6">
-        <p className="text-sm text-slate-500">{title}</p>
-        <h3 className="mt-2 text-3xl font-bold text-slate-900">{value}</h3>
-      </div>
+      {/* CSV Uploader Modal */}
+      {showCsvModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-slate-200 shadow-xl relative">
+            <button
+              onClick={() => setShowCsvModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg"
+            >
+              ✕
+            </button>
+            <CsvUploader
+              onSuccess={() => {
+                setShowCsvModal(false);
+                fetchDashboardData();
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
