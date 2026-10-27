@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import CsvUploader from "./components/CsvUploader";
 
@@ -25,11 +26,30 @@ interface Order {
 }
 
 export default function SupplierDashboard() {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [showCsvModal, setShowCsvModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"stock" | "profile" | "users">("stock");
+  const [userEmail, setUserEmail] = useState<string>("");
+  const [orgName, setOrgName] = useState<string>("");
+
+  useEffect(() => {
+    // Check if user is logged in; if not, redirect to /login immediately
+    const storedEmail = localStorage.getItem("orderdesk_user_email");
+    const storedOrg = localStorage.getItem("orderdesk_org_name");
+
+    if (!storedEmail) {
+      router.push("/login");
+    } else {
+      setUserEmail(storedEmail);
+      setOrgName(storedOrg || "Supplier Org");
+      setAuthenticated(true);
+      fetchDashboardData();
+    }
+  }, [router]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -51,9 +71,19 @@ export default function SupplierDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  const handleLogout = () => {
+    localStorage.removeItem("orderdesk_user_email");
+    localStorage.removeItem("orderdesk_org_name");
+    router.push("/login");
+  };
+
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white text-sm font-semibold">
+        Redirecting to Supplier Login...
+      </div>
+    );
+  }
 
   const ordersPlaced = orders.length;
   const ordersPaid = orders.filter((o) => o.payment_status === "PAID").length;
@@ -63,25 +93,33 @@ export default function SupplierDashboard() {
     <div className="min-h-screen bg-slate-50/50 p-6 sm:p-10 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* 7-Day Free Trial Banner */}
+        {/* Top Trial Banner */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="bg-white/20 text-xs font-black uppercase px-2.5 py-1 rounded-md">
               Trial Active
             </span>
             <p className="text-xs sm:text-sm font-medium">
-              You are currently on the <strong className="font-bold">7-Day Free Trial</strong>. 5 days remaining.
+              Welcome, <strong className="font-bold">{orgName}</strong>! You are on the <strong className="font-bold">7-Day Free Trial</strong> (5 days remaining).
             </p>
           </div>
-          <Link
-            href="/billing"
-            className="bg-white text-indigo-700 hover:bg-slate-100 font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm"
-          >
-            Upgrade Plan via Paynow
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/billing"
+              className="bg-white text-indigo-700 hover:bg-slate-100 font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm"
+            >
+              Upgrade Plan via Paynow
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="bg-black/20 hover:bg-black/40 text-white font-semibold text-xs px-3 py-2 rounded-xl transition"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
-        {/* Header & Main Navigation Menu */}
+        {/* Header & Main Menu Navigation */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">
@@ -92,7 +130,6 @@ export default function SupplierDashboard() {
             </h1>
           </div>
 
-          {/* Diagram Main Menu Navigation */}
           <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
             <button
               onClick={() => setActiveTab("stock")}
@@ -121,7 +158,7 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Diagram Order Pipeline Metric Cards */}
+        {/* Diagram Metric Pipeline */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <div
             onClick={() => setShowCsvModal(true)}
@@ -150,7 +187,7 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Dynamic Views matching Main Menu */}
+        {/* Tab Content */}
         {activeTab === "stock" && (
           <div className="grid lg:grid-cols-2 gap-8">
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
@@ -245,9 +282,10 @@ export default function SupplierDashboard() {
           <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4">
             <h2 className="text-xl font-bold text-slate-900">Supplier Profile</h2>
             <div className="space-y-2 text-sm text-slate-600">
-              <p><strong>Organization:</strong> Vortex Technologies Demo</p>
-              <p><strong>Plan Status:</strong> 7-Day Free Trial Active</p>
-              <p><strong>Paynow Integration:</strong> Enabled</p>
+              <p><strong>Organization Name:</strong> {orgName}</p>
+              <p><strong>Account Email:</strong> {userEmail}</p>
+              <p><strong>Subscription Status:</strong> 7-Day Free Trial Active</p>
+              <p><strong>Paynow Integration:</strong> Operational</p>
             </div>
             <Link
               href="/billing"
@@ -261,16 +299,16 @@ export default function SupplierDashboard() {
         {activeTab === "users" && (
           <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4">
             <h2 className="text-xl font-bold text-slate-900">User Management</h2>
-            <p className="text-sm text-slate-500">Manage team seats and access permissions for your supplier organization.</p>
+            <p className="text-sm text-slate-500">Manage team seats and permissions for your supplier organization.</p>
             <div className="p-4 bg-slate-50 rounded-2xl text-xs font-mono text-slate-800">
-              • misheck@vortextech.co.zw (Owner / CEO)
+              • {userEmail} (Owner / Primary Admin)
             </div>
           </div>
         )}
 
       </div>
 
-      {/* CSV Uploader Modal */}
+      {/* CSV Upload Modal */}
       {showCsvModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-slate-200 shadow-xl relative">
