@@ -27,16 +27,34 @@ interface Order {
   delivery_city: string;
 }
 
+interface Customer {
+  id: string;
+  company_name: string;
+  contact_email: string;
+  phone_number: string;
+  pricing_tier: string;
+  discount_rate: number;
+}
+
 export default function SupplierDashboard() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [showCsvModal, setShowCsvModal] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<"stock" | "profile" | "users">("stock");
+  const [showCustomerModal, setShowCustomerModal] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<"stock" | "customers" | "profile" | "users">("stock");
   const [userEmail, setUserEmail] = useState<string>("");
   const [orgName, setOrgName] = useState<string>("");
+
+  // New Customer Form State
+  const [newCompany, setNewCompany] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newTier, setNewTier] = useState("STANDARD");
+  const [newDiscount, setNewDiscount] = useState("0");
 
   useEffect(() => {
     const storedEmail = localStorage.getItem("orderdesk_user_email");
@@ -55,16 +73,19 @@ export default function SupplierDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [prodRes, orderRes] = await Promise.all([
+      const [prodRes, orderRes, custRes] = await Promise.all([
         fetch("https://orderdesk-backend-9gu2.onrender.com/products"),
-        fetch("https://orderdesk-backend-9gu2.onrender.com/orders")
+        fetch("https://orderdesk-backend-9gu2.onrender.com/orders"),
+        fetch("https://orderdesk-backend-9gu2.onrender.com/customers")
       ]);
 
       const prodData = await prodRes.json();
       const orderData = await orderRes.json();
+      const custData = await custRes.json();
 
       setProducts(prodData.data || []);
       setOrders(orderData.data || []);
+      setCustomers(custData.data || []);
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
     } finally {
@@ -92,6 +113,34 @@ export default function SupplierDashboard() {
     }
   };
 
+  const handleAddCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: newCompany,
+          contact_email: newEmail,
+          phone_number: newPhone,
+          pricing_tier: newTier,
+          discount_rate: parseFloat(newDiscount) || 0.0
+        })
+      });
+
+      if (res.ok) {
+        setShowCustomerModal(false);
+        setNewCompany("");
+        setNewEmail("");
+        setNewPhone("");
+        setNewDiscount("0");
+        fetchDashboardData();
+      }
+    } catch (err) {
+      console.error("Failed to create customer:", err);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("orderdesk_user_email");
     localStorage.removeItem("orderdesk_org_name");
@@ -108,7 +157,6 @@ export default function SupplierDashboard() {
 
   const lowStockItems = products.filter((p) => p.stock_quantity <= (p.reorder_level || 10));
   const ordersPlaced = orders.length;
-  const ordersPaid = orders.filter((o) => o.payment_status === "PAID").length;
   const ordersShipped = orders.filter((o) => o.status === "SHIPPED" || o.status === "DELIVERED").length;
 
   return (
@@ -141,7 +189,7 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Low-Stock Alert Banner (Feature #2) */}
+        {/* Low-Stock Alert Banner */}
         {lowStockItems.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 shadow-sm">
             <div className="flex items-center gap-3">
@@ -162,7 +210,7 @@ export default function SupplierDashboard() {
           </div>
         )}
 
-        {/* Header & Navigation Bar */}
+        {/* Header & Main Menu Navigation */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <Image 
@@ -190,6 +238,14 @@ export default function SupplierDashboard() {
               }`}
             >
               Stock Management
+            </button>
+            <button
+              onClick={() => setActiveTab("customers")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+                activeTab === "customers" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
+              }`}
+            >
+              Customers & Price Tiers
             </button>
             <button
               onClick={() => setActiveTab("profile")}
@@ -224,8 +280,8 @@ export default function SupplierDashboard() {
           </div>
 
           <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Orders Placed</span>
-            <p className="text-3xl font-black text-slate-900 mt-2">{ordersPlaced}</p>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Retail Buyers</span>
+            <p className="text-3xl font-black text-indigo-600 mt-2">{customers.length}</p>
           </div>
 
           <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
@@ -236,15 +292,14 @@ export default function SupplierDashboard() {
           </div>
 
           <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Dispatched / Delivered</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Orders Dispatched</span>
             <p className="text-3xl font-black text-blue-600 mt-2">{ordersShipped}</p>
           </div>
         </div>
 
-        {/* Tab Content */}
+        {/* Tab 1: Stock Management & Orders */}
         {activeTab === "stock" && (
           <div className="grid lg:grid-cols-2 gap-8">
-            {/* Live Stock Management Table */}
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-slate-900">Live Stock Management</h2>
@@ -302,7 +357,6 @@ export default function SupplierDashboard() {
               )}
             </div>
 
-            {/* Wholesale Orders Pipeline Table */}
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-slate-900">Wholesale Orders Pipeline</h2>
@@ -323,7 +377,7 @@ export default function SupplierDashboard() {
                         <th className="pb-3">Client</th>
                         <th className="pb-3">Fulfillment</th>
                         <th className="pb-3">Total</th>
-                        <th className="pb-3 text-right">Pipeline Status (Click to Advance)</th>
+                        <th className="pb-3 text-right">Pipeline Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -362,6 +416,64 @@ export default function SupplierDashboard() {
           </div>
         )}
 
+        {/* Tab 2: Feature #3 Customer Accounts & Price Tiers */}
+        {activeTab === "customers" && (
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Retailer Accounts & Wholesale Price Tiers</h2>
+                <p className="text-xs text-slate-500">Manage buyer discounts, custom wholesale price levels, and customer contact details.</p>
+              </div>
+              <button
+                onClick={() => setShowCustomerModal(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-sm"
+              >
+                + Register Retail Customer
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs text-slate-400 font-bold uppercase tracking-wider">
+                    <th className="pb-3">Company Name</th>
+                    <th className="pb-3">Contact Email</th>
+                    <th className="pb-3">Phone</th>
+                    <th className="pb-3">Pricing Tier</th>
+                    <th className="pb-3 text-right">Tier Discount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {customers.map((c) => {
+                    const tierColors: Record<string, string> = {
+                      STANDARD: "bg-slate-100 text-slate-800",
+                      BULK_BUYER: "bg-blue-100 text-blue-800",
+                      VIP: "bg-purple-100 text-purple-800",
+                    };
+
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50/50 transition">
+                        <td className="py-3 font-bold text-slate-900">{c.company_name}</td>
+                        <td className="py-3 text-xs text-slate-600">{c.contact_email}</td>
+                        <td className="py-3 text-xs text-slate-500">{c.phone_number || "N/A"}</td>
+                        <td className="py-3">
+                          <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${tierColors[c.pricing_tier] || "bg-slate-100"}`}>
+                            {c.pricing_tier}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right font-bold text-emerald-600">
+                          {c.discount_rate}% Off Catalog
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Profile */}
         {activeTab === "profile" && (
           <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4">
             <h2 className="text-xl font-bold text-slate-900">Supplier Profile</h2>
@@ -380,6 +492,7 @@ export default function SupplierDashboard() {
           </div>
         )}
 
+        {/* Tab 4: Users */}
         {activeTab === "users" && (
           <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4">
             <h2 className="text-xl font-bold text-slate-900">User Management</h2>
@@ -391,6 +504,83 @@ export default function SupplierDashboard() {
         )}
 
       </div>
+
+      {/* Register Customer Modal */}
+      {showCustomerModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-slate-200 shadow-xl relative">
+            <button
+              onClick={() => setShowCustomerModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg"
+            >
+              ✕
+            </button>
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Register Retail Customer Account</h3>
+            <form onSubmit={handleAddCustomer} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700">Company Name</label>
+                <input
+                  type="text"
+                  required
+                  value={newCompany}
+                  onChange={(e) => setNewCompany(e.target.value)}
+                  placeholder="e.g. Ruwa Express Mart"
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-700">Contact Email</label>
+                <input
+                  type="email"
+                  required
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="manager@ruwamart.co.zw"
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-700">Phone / WhatsApp</label>
+                <input
+                  type="text"
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  placeholder="+263771112233"
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-700">Wholesale Price Tier</label>
+                <select
+                  value={newTier}
+                  onChange={(e) => setNewTier(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900 bg-white font-bold"
+                >
+                  <option value="STANDARD">STANDARD (0% Discount)</option>
+                  <option value="BULK_BUYER">BULK_BUYER (5% Discount)</option>
+                  <option value="VIP">VIP (10% Discount)</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-bold text-slate-700">Custom Discount (%)</label>
+                <input
+                  type="number"
+                  value={newDiscount}
+                  onChange={(e) => setNewDiscount(e.target.value)}
+                  placeholder="e.g. 5"
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-xs shadow-md mt-2"
+              >
+                Create Customer Account
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* CSV Uploader Modal */}
       {showCsvModal && (
