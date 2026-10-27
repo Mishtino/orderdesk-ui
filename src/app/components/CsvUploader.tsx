@@ -37,7 +37,7 @@ export default function CsvUploader({ onSuccess }: { onSuccess?: () => void }) {
     <div className="p-6 bg-white border border-slate-200 rounded-2xl shadow-sm max-w-lg">
       <h3 className="text-lg font-bold text-slate-900 mb-2">Bulk Upload Catalog (CSV)</h3>
       <p className="text-xs text-slate-500 mb-4">
-        Header required: <code className="bg-slate-100 px-1 py-0.5 rounded">sku, title, wholesale_price, stock_quantity, weight_kg</code>
+        Spreadsheet columns required: <code className="bg-slate-100 px-1 py-0.5 rounded">sku, title, wholesale_price, stock_quantity, weight_kg</code>
       </p>
 
       <input
@@ -49,4 +49,17 @@ export default function CsvUploader({ onSuccess }: { onSuccess?: () => void }) {
 
       <button
         onClick={handleUpload}
-        disabled={!
+        disabled={!file || uploading}
+        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-50 text-sm"
+      >
+        {uploading ? "Processing CSV..." : "Upload & Sync Inventory"}
+      </button>
+
+      {statusMsg && (
+        <p className={`mt-3 text-xs font-semibold text-center ${statusMsg.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+          {statusMsg}
+        </p>
+      )}
+    </div>
+  );
+}
