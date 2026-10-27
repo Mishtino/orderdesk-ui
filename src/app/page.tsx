@@ -12,6 +12,7 @@ interface Product {
   title: string;
   wholesale_price: number;
   stock_quantity: number;
+  reorder_level: number;
   weight_kg: number;
 }
 
@@ -71,6 +72,26 @@ export default function SupplierDashboard() {
     }
   };
 
+  const handleStatusChange = async (orderId: string, currentStatus: string) => {
+    const pipeline = ["PENDING", "CONFIRMED", "PACKED", "DISPATCHED", "DELIVERED"];
+    const currentIndex = pipeline.indexOf(currentStatus.toUpperCase());
+    const nextStatus = pipeline[(currentIndex + 1) % pipeline.length];
+
+    try {
+      const res = await fetch(`https://orderdesk-backend-9gu2.onrender.com/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      if (res.ok) {
+        fetchDashboardData();
+      }
+    } catch (err) {
+      console.error("Failed to update status:", err);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("orderdesk_user_email");
     localStorage.removeItem("orderdesk_org_name");
@@ -85,9 +106,10 @@ export default function SupplierDashboard() {
     );
   }
 
+  const lowStockItems = products.filter((p) => p.stock_quantity <= (p.reorder_level || 10));
   const ordersPlaced = orders.length;
   const ordersPaid = orders.filter((o) => o.payment_status === "PAID").length;
-  const ordersShipped = orders.filter((o) => o.status === "SHIPPED" || o.status === "COLLECTED").length;
+  const ordersShipped = orders.filter((o) => o.status === "SHIPPED" || o.status === "DELIVERED").length;
 
   return (
     <div className="min-h-screen bg-slate-50/50 p-6 sm:p-10 font-sans">
@@ -118,6 +140,27 @@ export default function SupplierDashboard() {
             </button>
           </div>
         </div>
+
+        {/* Low-Stock Alert Banner (Feature #2) */}
+        {lowStockItems.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="bg-amber-500 text-white font-black text-xs px-2.5 py-1 rounded-full animate-pulse">
+                ⚠️ Low Stock Alert
+              </span>
+              <p className="text-xs sm:text-sm font-bold">
+                {lowStockItems.length} SKU(s) have dropped below reorder threshold:{" "}
+                <span className="underline">{lowStockItems.map((i) => i.sku).join(", ")}</span>
+              </p>
+            </div>
+            <button
+              onClick={() => setShowCsvModal(true)}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm whitespace-nowrap"
+            >
+              Restock via CSV
+            </button>
+          </div>
+        )}
 
         {/* Header & Navigation Bar */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -186,12 +229,14 @@ export default function SupplierDashboard() {
           </div>
 
           <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Orders Paid</span>
-            <p className="text-3xl font-black text-emerald-600 mt-2">{ordersPaid}</p>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Low-Stock Warnings</span>
+            <p className={`text-3xl font-black mt-2 ${lowStockItems.length > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+              {lowStockItems.length}
+            </p>
           </div>
 
           <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Collected / Shipped</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Dispatched / Delivered</span>
             <p className="text-3xl font-black text-blue-600 mt-2">{ordersShipped}</p>
           </div>
         </div>
@@ -199,6 +244,7 @@ export default function SupplierDashboard() {
         {/* Tab Content */}
         {activeTab === "stock" && (
           <div className="grid lg:grid-cols-2 gap-8">
+            {/* Live Stock Management Table */}
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-slate-900">Live Stock Management</h2>
@@ -225,24 +271,38 @@ export default function SupplierDashboard() {
                         <th className="pb-3">SKU</th>
                         <th className="pb-3">Title</th>
                         <th className="pb-3">Price</th>
+                        <th className="pb-3">Reorder Level</th>
                         <th className="pb-3 text-right">Stock</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {products.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/50 transition">
-                          <td className="py-3 font-bold text-slate-900">{p.sku}</td>
-                          <td className="py-3 text-slate-600">{p.title}</td>
-                          <td className="py-3 font-semibold text-slate-900">${p.wholesale_price.toFixed(2)}</td>
-                          <td className="py-3 text-right font-bold text-slate-900">{p.stock_quantity} units</td>
-                        </tr>
-                      ))}
+                      {products.map((p) => {
+                        const isLow = p.stock_quantity <= (p.reorder_level || 10);
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                            <td className="py-3 font-bold text-slate-900">{p.sku}</td>
+                            <td className="py-3 text-slate-600">{p.title}</td>
+                            <td className="py-3 font-semibold text-slate-900">${p.wholesale_price.toFixed(2)}</td>
+                            <td className="py-3 text-xs text-slate-500">{p.reorder_level || 10} units</td>
+                            <td className="py-3 text-right">
+                              <span
+                                className={`text-xs px-2.5 py-1 rounded-full font-extrabold ${
+                                  isLow ? "bg-red-100 text-red-700 animate-pulse" : "bg-emerald-100 text-emerald-800"
+                                }`}
+                              >
+                                {p.stock_quantity} units
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               )}
             </div>
 
+            {/* Wholesale Orders Pipeline Table */}
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-slate-900">Wholesale Orders Pipeline</h2>
@@ -263,22 +323,37 @@ export default function SupplierDashboard() {
                         <th className="pb-3">Client</th>
                         <th className="pb-3">Fulfillment</th>
                         <th className="pb-3">Total</th>
-                        <th className="pb-3 text-right">Status</th>
+                        <th className="pb-3 text-right">Pipeline Status (Click to Advance)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {orders.map((o) => (
-                        <tr key={o.id} className="hover:bg-slate-50/50 transition">
-                          <td className="py-3 font-bold text-slate-900">{o.client_name}</td>
-                          <td className="py-3 text-xs text-slate-500">{o.fulfillment_type} ({o.delivery_city})</td>
-                          <td className="py-3 font-semibold text-slate-900">${o.total_amount.toFixed(2)}</td>
-                          <td className="py-3 text-right">
-                            <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold">
-                              {o.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {orders.map((o) => {
+                        const statusColors: Record<string, string> = {
+                          PENDING: "bg-amber-100 text-amber-800",
+                          CONFIRMED: "bg-blue-100 text-blue-800",
+                          PACKED: "bg-purple-100 text-purple-800",
+                          DISPATCHED: "bg-indigo-100 text-indigo-800",
+                          DELIVERED: "bg-emerald-100 text-emerald-800",
+                        };
+
+                        return (
+                          <tr key={o.id} className="hover:bg-slate-50/50 transition">
+                            <td className="py-3 font-bold text-slate-900">{o.client_name}</td>
+                            <td className="py-3 text-xs text-slate-500">{o.fulfillment_type} ({o.delivery_city})</td>
+                            <td className="py-3 font-semibold text-slate-900">${o.total_amount.toFixed(2)}</td>
+                            <td className="py-3 text-right">
+                              <button
+                                onClick={() => handleStatusChange(o.id, o.status)}
+                                className={`text-xs px-3 py-1 rounded-full font-bold shadow-sm transition hover:scale-105 ${
+                                  statusColors[o.status.toUpperCase()] || "bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                {o.status} →
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
