@@ -40,7 +40,7 @@ export default function RootLayout({
 
             <div className="text-center sm:text-right space-y-1">
               <p className="font-medium text-slate-300">
-                © {new Date().getFullYear()} OrderDesk. Developed & Powered by <strong className="text-indigo-400 font-bold">Vortex Technologies</strong>.
+                © 2026 OrderDesk. Developed & Powered by <strong className="text-indigo-400 font-bold">Vortex Technologies</strong>.
               </p>
               <p className="text-[11px] text-slate-500">
                 Encrypted via 256-Bit SSL • All Rights Reserved.
