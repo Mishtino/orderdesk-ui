@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
+const BACKEND_URL = "https://orderdesk-backend-9gu2.onrender.com";
+
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"LOGIN" | "REGISTER" | "RESET">("LOGIN");
@@ -28,22 +30,23 @@ export default function LoginPage() {
       let bodyData = {};
 
       if (mode === "REGISTER") {
-        endpoint = "/api/auth/register";
+        endpoint = `${BACKEND_URL}/auth/register`;
         bodyData = { org_name: orgName, email, password };
       } else if (mode === "LOGIN") {
-        endpoint = "/api/auth/login";
+        endpoint = `${BACKEND_URL}/auth/login`;
         bodyData = { email, password };
       } else if (mode === "RESET") {
-        endpoint = "/api/auth/reset-password";
+        endpoint = `${BACKEND_URL}/auth/reset-password`;
         bodyData = { email, security_passkey: passkey, new_password: newPassword };
       }
 
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "omit",
         body: JSON.stringify(bodyData),
       }).catch(() => {
-        throw new Error("Backend server is starting up. Please wait 15 seconds and try again.");
+        throw new Error("Backend server is waking up on Render. Please wait 15 seconds and try again.");
       });
 
       const data = await res.json();
@@ -92,7 +95,7 @@ export default function LoginPage() {
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             {mode === "LOGIN" && "Manage wholesale orders & live inventory"}
-            {mode === "REGISTER" && "Get your unique high-entropy passkey"}
+            {mode === "REGISTER" && "Get your unique security passkey"}
             {mode === "RESET" && "Authorize password change with your security passkey"}
           </p>
         </div>
@@ -109,7 +112,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Passkey Key Card Display after Registration */}
         {generatedPasskey ? (
           <div className="space-y-4 text-center">
             <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-left">
@@ -204,7 +206,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-sm shadow-md disabled:opacity-50"
             >
-              {loading ? "Processing..." : mode === "LOGIN" ? "Sign In" : mode === "REGISTER" ? "Register Account" : "Reset Password"}
+              {loading ? "Processing..." : mode === "LOGIN" ? "Sign In" : mode === "REGISTER" ? "Register Company" : "Reset Password"}
             </button>
           </form>
         )}
