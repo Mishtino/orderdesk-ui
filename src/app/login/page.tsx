@@ -6,66 +6,65 @@ import Image from "next/image";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [step, setStep] = useState<"DETAILS" | "VERIFY">("DETAILS");
+  const [mode, setMode] = useState<"LOGIN" | "REGISTER" | "RESET">("LOGIN");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
-  const [code, setCode] = useState("");
+  const [passkey, setPasskey] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [generatedPasskey, setGeneratedPasskey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const handleRequestCode = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccessMsg(null);
 
     try {
-      if (!email) throw new Error("Please enter your work email.");
+      if (mode === "REGISTER") {
+        const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ org_name: orgName, email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Registration failed.");
 
-      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/auth/send-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, org_name: orgName })
-      }).catch(() => {
-        throw new Error("Unable to connect to OrderDesk server. Please wait 10 seconds for backend initialization.");
-      });
+        setGeneratedPasskey(data.security_passkey);
+        localStorage.setItem("orderdesk_org_name", data.organization_name);
+        localStorage.setItem("orderdesk_org_id", data.organization_id);
+        localStorage.setItem("orderdesk_user_email", data.email);
+        localStorage.setItem("orderdesk_passkey", data.security_passkey);
 
-      const data = await res.json();
-      if (res.ok) {
-        setStep("VERIFY");
-      } else {
-        throw new Error(data.detail || "Failed to send verification code.");
-      }
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
-    } finally {
-      setLoading(false);
-    }
-  };
+      } else if (mode === "LOGIN") {
+        const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Invalid login credentials.");
 
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/auth/verify-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, org_name: orgName })
-      }).catch(() => {
-        throw new Error("Unable to connect to OrderDesk server. Please try again.");
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        localStorage.setItem("orderdesk_org_name", data.organization_name || orgName || "Supplier Org");
-        localStorage.setItem("orderdesk_org_id", data.organization_id || "default");
-        localStorage.setItem("orderdesk_user_email", data.email || email);
+        localStorage.setItem("orderdesk_org_name", data.organization_name);
+        localStorage.setItem("orderdesk_org_id", data.organization_id);
+        localStorage.setItem("orderdesk_user_email", data.email);
+        localStorage.setItem("orderdesk_passkey", data.security_passkey);
         router.push("/");
-      } else {
-        throw new Error(data.detail || "Invalid code. Please check your inbox and try again.");
+
+      } else if (mode === "RESET") {
+        const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/auth/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, security_passkey: passkey, new_password: newPassword })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Password reset failed.");
+
+        setSuccessMsg("Password reset successfully! Please log in.");
+        setMode("LOGIN");
       }
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");
@@ -94,14 +93,14 @@ export default function LoginPage() {
             OrderDesk B2B Portal
           </span>
           <h1 className="text-2xl font-black text-slate-900 mt-1">
-            {step === "VERIFY" 
-              ? "Check Your Email" 
-              : isSignUp ? "Create Supplier Account" : "Supplier Sign In"}
+            {mode === "LOGIN" && "Supplier Sign In"}
+            {mode === "REGISTER" && "Register Company"}
+            {mode === "RESET" && "Reset Password"}
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            {step === "VERIFY" 
-              ? `Enter the 6-digit code sent to ${email}`
-              : "Access wholesale orders & live stock pipelines"}
+            {mode === "LOGIN" && "Manage wholesale orders & live inventory"}
+            {mode === "REGISTER" && "Get your unique security passkey"}
+            {mode === "RESET" && "Authorize password change with your security passkey"}
           </p>
         </div>
 
@@ -111,9 +110,34 @@ export default function LoginPage() {
           </div>
         )}
 
-        {step === "DETAILS" ? (
-          <form onSubmit={handleRequestCode} className="space-y-4">
-            {isSignUp && (
+        {successMsg && (
+          <div className="mb-4 text-xs font-bold text-emerald-700 bg-emerald-50 p-3 rounded-xl text-center border border-emerald-200">
+            {successMsg}
+          </div>
+        )}
+
+        {/* Passkey Key Card Display after Registration */}
+        {generatedPasskey ? (
+          <div className="space-y-4 text-center">
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-left">
+              <span className="text-xs font-bold text-amber-800 uppercase block mb-1">🔑 Save Your Unique Passkey</span>
+              <p className="text-[11px] text-amber-700 mb-2">
+                This passkey is required to reset your password if you ever forget it. Store it in a safe place.
+              </p>
+              <div className="bg-white border border-amber-300 font-mono font-bold text-lg text-slate-900 p-3 rounded-xl text-center tracking-widest">
+                {generatedPasskey}
+              </div>
+            </div>
+            <button
+              onClick={() => router.push("/")}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-sm shadow-md"
+            >
+              Continue to Dashboard →
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleAuth} className="space-y-4">
+            {mode === "REGISTER" && (
               <div>
                 <label className="text-xs font-bold text-slate-700">Company / Supplier Name</label>
                 <input
@@ -122,7 +146,7 @@ export default function LoginPage() {
                   value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
                   placeholder="e.g. Vortex Supplies"
-                  className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-indigo-600 text-slate-900"
+                  className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-indigo-600"
                 />
               </div>
             )}
@@ -135,75 +159,78 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="supplier@vortextech.co.zw"
-                className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-indigo-600 text-slate-900"
+                className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-indigo-600"
               />
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-slate-700">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-indigo-600 text-slate-900"
-              />
-            </div>
+            {mode !== "RESET" && (
+              <div>
+                <label className="text-xs font-bold text-slate-700">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-indigo-600"
+                />
+              </div>
+            )}
+
+            {mode === "RESET" && (
+              <>
+                <div>
+                  <label className="text-xs font-bold text-slate-700">Security Passkey</label>
+                  <input
+                    type="text"
+                    required
+                    value={passkey}
+                    onChange={(e) => setPasskey(e.target.value)}
+                    placeholder="ORD-XXXX-XXXX"
+                    className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono uppercase tracking-wider text-slate-900 focus:outline-indigo-600"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700">New Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-indigo-600"
+                  />
+                </div>
+              </>
+            )}
 
             <button
               type="submit"
               disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-sm shadow-md disabled:opacity-50"
             >
-              {loading ? "Sending Code..." : "Send Verification Code"}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleVerifyCode} className="space-y-4">
-            <div>
-              <label className="text-xs font-bold text-slate-700">6-Digit Verification Code</label>
-              <input
-                type="text"
-                required
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Enter 6 digits"
-                className="w-full mt-1 px-4 py-3 border border-slate-200 rounded-xl text-center text-xl tracking-widest font-mono font-bold focus:outline-indigo-600 text-slate-900"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition text-sm shadow-md disabled:opacity-50"
-            >
-              {loading ? "Verifying..." : "Verify & Log In"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStep("DETAILS")}
-              className="w-full text-xs text-slate-500 hover:text-slate-700 font-semibold mt-2"
-            >
-              ← Edit email address
+              {loading ? "Processing..." : mode === "LOGIN" ? "Sign In" : mode === "REGISTER" ? "Register Account" : "Reset Password"}
             </button>
           </form>
         )}
 
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setStep("DETAILS");
-            }}
-            className="text-xs font-semibold text-slate-600 hover:text-indigo-600"
-          >
-            {isSignUp
-              ? "Already have an account? Sign in"
-              : "Need a supplier portal? Register company"}
-          </button>
+        <div className="mt-6 flex flex-col gap-2 text-center text-xs font-semibold text-slate-600">
+          {mode === "LOGIN" && (
+            <>
+              <button onClick={() => setMode("RESET")} className="hover:text-indigo-600 text-slate-500">
+                Forgot password? Reset with Security Passkey
+              </button>
+              <button onClick={() => setMode("REGISTER")} className="hover:text-indigo-600 text-indigo-600 font-bold">
+                Need a portal? Register company
+              </button>
+            </>
+          )}
+
+          {(mode === "REGISTER" || mode === "RESET") && (
+            <button onClick={() => setMode("LOGIN")} className="hover:text-indigo-600">
+              ← Back to Sign In
+            </button>
+          )}
         </div>
       </div>
     </div>
