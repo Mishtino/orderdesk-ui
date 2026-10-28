@@ -46,15 +46,17 @@ export default function SupplierDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [submittingCustomer, setSubmittingCustomer] = useState<boolean>(false);
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [showCsvModal, setShowCsvModal] = useState<boolean>(false);
   const [showCustomerModal, setShowCustomerModal] = useState<boolean>(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Order | null>(null);
   const [activeTab, setActiveTab] = useState<"stock" | "customers" | "profile" | "users">("stock");
   const [userEmail, setUserEmail] = useState<string>("");
   const [orgName, setOrgName] = useState<string>("");
 
-  // New Customer Form State
+  // Customer Form State
   const [newCompany, setNewCompany] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -118,11 +120,21 @@ export default function SupplierDashboard() {
     }
   };
 
-  const handleAddCustomer = async (e: React.FormEvent) => {
+  // FIX #4: FAST DEBOUNCED CUSTOMER CREATION
+  const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingCustomer) return;
+
+    setSubmittingCustomer(true);
     try {
-      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/customers", {
-        method: "POST",
+      const url = editingCustomer
+        ? `https://orderdesk-backend-9gu2.onrender.com/customers/${editingCustomer.id}`
+        : "https://orderdesk-backend-9gu2.onrender.com/customers";
+
+      const method = editingCustomer ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method: method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_name: newCompany,
@@ -135,15 +147,44 @@ export default function SupplierDashboard() {
 
       if (res.ok) {
         setShowCustomerModal(false);
+        setEditingCustomer(null);
         setNewCompany("");
         setNewEmail("");
         setNewPhone("");
         setNewDiscount("0");
+        await fetchDashboardData();
+      }
+    } catch (err) {
+      console.error("Failed to save customer:", err);
+    } finally {
+      setSubmittingCustomer(false);
+    }
+  };
+
+  // FIX #3: DELETE CUSTOMER ACCOUNT
+  const handleDeleteCustomer = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this retailer account?")) return;
+
+    try {
+      const res = await fetch(`https://orderdesk-backend-9gu2.onrender.com/customers/${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
         fetchDashboardData();
       }
     } catch (err) {
-      console.error("Failed to create customer:", err);
+      console.error("Failed to delete customer:", err);
     }
+  };
+
+  const openEditCustomer = (c: Customer) => {
+    setEditingCustomer(c);
+    setNewCompany(c.company_name);
+    setNewEmail(c.contact_email);
+    setNewPhone(c.phone_number || "");
+    setNewTier(c.pricing_tier);
+    setNewDiscount(c.discount_rate.toString());
+    setShowCustomerModal(true);
   };
 
   const handlePrintInvoice = () => {
@@ -171,7 +212,7 @@ export default function SupplierDashboard() {
     <div className="min-h-screen bg-slate-50/50 p-6 sm:p-10 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Top Free Trial Banner */}
+        {/* Top Trial Banner */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm print:hidden">
           <div className="flex items-center gap-3">
             <span className="bg-white/20 text-xs font-black uppercase px-2.5 py-1 rounded-md">
@@ -218,7 +259,7 @@ export default function SupplierDashboard() {
           </div>
         )}
 
-        {/* Header & Main Menu Navigation */}
+        {/* Header Navigation */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-4">
             <Image 
@@ -274,7 +315,7 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Metric Cards */}
+        {/* Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 print:hidden">
           <div
             onClick={() => setShowCsvModal(true)}
@@ -305,7 +346,7 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Tab 1: Stock Management & Orders */}
+        {/* Tab 1: Stock Management */}
         {activeTab === "stock" && (
           <div className="grid lg:grid-cols-2 gap-8 print:hidden">
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
@@ -334,7 +375,7 @@ export default function SupplierDashboard() {
                         <th className="pb-3">SKU</th>
                         <th className="pb-3">Title</th>
                         <th className="pb-3">Price</th>
-                        <th className="pb-3">Reorder Level</th>
+                        <th className="pb-3">Reorder</th>
                         <th className="pb-3 text-right">Stock</th>
                       </tr>
                     </thead>
@@ -346,7 +387,7 @@ export default function SupplierDashboard() {
                             <td className="py-3 font-bold text-slate-900">{p.sku}</td>
                             <td className="py-3 text-slate-600">{p.title}</td>
                             <td className="py-3 font-semibold text-slate-900">${p.wholesale_price.toFixed(2)}</td>
-                            <td className="py-3 text-xs text-slate-500">{p.reorder_level || 10} units</td>
+                            <td className="py-3 text-xs text-slate-500">{p.reorder_level || 10}</td>
                             <td className="py-3 text-right">
                               <span
                                 className={`text-xs px-2.5 py-1 rounded-full font-extrabold ${
@@ -365,7 +406,7 @@ export default function SupplierDashboard() {
               )}
             </div>
 
-            {/* Wholesale Orders Pipeline */}
+            {/* Wholesale Pipeline */}
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-bold text-slate-900">Wholesale Orders Pipeline</h2>
@@ -436,16 +477,24 @@ export default function SupplierDashboard() {
           </div>
         )}
 
-        {/* Tab 2: Customers */}
+        {/* Tab 2: FIX #3 EDITABLE/REMOVABLE RETAILER ACCOUNTS */}
         {activeTab === "customers" && (
           <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-6 print:hidden">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">Retailer Accounts & Wholesale Price Tiers</h2>
-                <p className="text-xs text-slate-500">Manage buyer discounts, custom wholesale price levels, and customer contact details.</p>
+                <p className="text-xs text-slate-500">Manage buyer discounts, edit contact details, or remove accounts.</p>
               </div>
               <button
-                onClick={() => setShowCustomerModal(true)}
+                onClick={() => {
+                  setEditingCustomer(null);
+                  setNewCompany("");
+                  setNewEmail("");
+                  setNewPhone("");
+                  setNewTier("STANDARD");
+                  setNewDiscount("0");
+                  setShowCustomerModal(true);
+                }}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-sm"
               >
                 + Register Retail Customer
@@ -460,7 +509,8 @@ export default function SupplierDashboard() {
                     <th className="pb-3">Contact Email</th>
                     <th className="pb-3">Phone</th>
                     <th className="pb-3">Pricing Tier</th>
-                    <th className="pb-3 text-right">Tier Discount</th>
+                    <th className="pb-3">Tier Discount</th>
+                    <th className="pb-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -481,8 +531,22 @@ export default function SupplierDashboard() {
                             {c.pricing_tier}
                           </span>
                         </td>
-                        <td className="py-3 text-right font-bold text-emerald-600">
+                        <td className="py-3 font-bold text-emerald-600">
                           {c.discount_rate}% Off Catalog
+                        </td>
+                        <td className="py-3 text-right space-x-2">
+                          <button
+                            onClick={() => openEditCustomer(c)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-3 py-1 rounded-lg transition"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCustomer(c.id)}
+                            className="bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs px-3 py-1 rounded-lg transition"
+                          >
+                            Remove
+                          </button>
                         </td>
                       </tr>
                     );
@@ -525,7 +589,7 @@ export default function SupplierDashboard() {
 
       </div>
 
-      {/* Feature #4: PDF Invoice / Delivery Note Modal */}
+      {/* PDF Invoice Modal */}
       {selectedInvoice && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-8 w-full max-w-2xl border border-slate-200 shadow-2xl relative space-y-6">
@@ -550,7 +614,6 @@ export default function SupplierDashboard() {
               </div>
             </div>
 
-            {/* Tax Invoice printable document */}
             <div id="printable-invoice" className="space-y-6 text-slate-800 font-sans p-2">
               <div className="flex justify-between items-start">
                 <div>
@@ -620,7 +683,7 @@ export default function SupplierDashboard() {
         </div>
       )}
 
-      {/* Register Customer Modal */}
+      {/* FIX #4: FAST CREATION MODAL WITH SUBMIT STATE */}
       {showCustomerModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-slate-200 shadow-xl relative">
@@ -630,8 +693,10 @@ export default function SupplierDashboard() {
             >
               ✕
             </button>
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Register Retail Customer Account</h3>
-            <form onSubmit={handleAddCustomer} className="space-y-3 text-xs">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">
+              {editingCustomer ? "Edit Retailer Account" : "Register Retail Customer Account"}
+            </h3>
+            <form onSubmit={handleSaveCustomer} className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700">Company Name</label>
                 <input
@@ -688,9 +753,10 @@ export default function SupplierDashboard() {
               </div>
               <button
                 type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-xs shadow-md mt-2"
+                disabled={submittingCustomer}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-xs shadow-md mt-2 disabled:opacity-50"
               >
-                Create Customer Account
+                {submittingCustomer ? "Saving Account..." : editingCustomer ? "Update Account" : "Create Customer Account"}
               </button>
             </form>
           </div>
