@@ -27,6 +27,8 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, org_name: orgName })
+      }).catch(() => {
+        throw new Error("Unable to connect to OrderDesk server. Please wait 10 seconds for backend initialization.");
       });
 
       const data = await res.json();
@@ -36,7 +38,7 @@ export default function LoginPage() {
         throw new Error(data.detail || "Failed to send verification code.");
       }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
@@ -52,6 +54,8 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code, org_name: orgName })
+      }).catch(() => {
+        throw new Error("Unable to connect to OrderDesk server. Please try again.");
       });
 
       const data = await res.json();
@@ -61,10 +65,10 @@ export default function LoginPage() {
         localStorage.setItem("orderdesk_user_email", data.email || email);
         router.push("/");
       } else {
-        throw new Error(data.detail || "Invalid code. Please try again.");
+        throw new Error(data.detail || "Invalid code. Please check your inbox and try again.");
       }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
@@ -102,7 +106,7 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="mb-4 text-xs font-semibold text-red-600 bg-red-50 p-3 rounded-xl text-center">
+          <div className="mb-4 text-xs font-semibold text-red-600 bg-red-50 p-3 rounded-xl text-center border border-red-200">
             {error}
           </div>
         )}
