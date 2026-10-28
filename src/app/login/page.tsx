@@ -24,46 +24,45 @@ export default function LoginPage() {
     setSuccessMsg(null);
 
     try {
-      if (mode === "REGISTER") {
-        const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ org_name: orgName, email, password })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Registration failed.");
+      let endpoint = "";
+      let bodyData = {};
 
+      if (mode === "REGISTER") {
+        endpoint = "https://orderdesk-backend-9gu2.onrender.com/auth/register";
+        bodyData = { org_name: orgName, email, password };
+      } else if (mode === "LOGIN") {
+        endpoint = "https://orderdesk-backend-9gu2.onrender.com/auth/login";
+        bodyData = { email, password };
+      } else if (mode === "RESET") {
+        endpoint = "https://orderdesk-backend-9gu2.onrender.com/auth/reset-password";
+        bodyData = { email, security_passkey: passkey, new_password: newPassword };
+      }
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyData)
+      }).catch(() => {
+        throw new Error("Backend server is waking up on Render. Please wait 15 seconds and try again.");
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Authentication request failed.");
+
+      if (mode === "REGISTER") {
         setGeneratedPasskey(data.security_passkey);
         localStorage.setItem("orderdesk_org_name", data.organization_name);
         localStorage.setItem("orderdesk_org_id", data.organization_id);
         localStorage.setItem("orderdesk_user_email", data.email);
         localStorage.setItem("orderdesk_passkey", data.security_passkey);
-
       } else if (mode === "LOGIN") {
-        const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Invalid login credentials.");
-
         localStorage.setItem("orderdesk_org_name", data.organization_name);
         localStorage.setItem("orderdesk_org_id", data.organization_id);
         localStorage.setItem("orderdesk_user_email", data.email);
         localStorage.setItem("orderdesk_passkey", data.security_passkey);
         router.push("/");
-
       } else if (mode === "RESET") {
-        const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/auth/reset-password", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, security_passkey: passkey, new_password: newPassword })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Password reset failed.");
-
-        setSuccessMsg("Password reset successfully! Please log in.");
+        setSuccessMsg("Password reset successfully! Please sign in with your new password.");
         setMode("LOGIN");
       }
     } catch (err: any) {
