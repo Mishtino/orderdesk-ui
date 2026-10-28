@@ -28,22 +28,22 @@ export default function LoginPage() {
       let bodyData = {};
 
       if (mode === "REGISTER") {
-        endpoint = "https://orderdesk-backend-9gu2.onrender.com/auth/register";
+        endpoint = "/api/auth/register";
         bodyData = { org_name: orgName, email, password };
       } else if (mode === "LOGIN") {
-        endpoint = "https://orderdesk-backend-9gu2.onrender.com/auth/login";
+        endpoint = "/api/auth/login";
         bodyData = { email, password };
       } else if (mode === "RESET") {
-        endpoint = "https://orderdesk-backend-9gu2.onrender.com/auth/reset-password";
+        endpoint = "/api/auth/reset-password";
         bodyData = { email, security_passkey: passkey, new_password: newPassword };
       }
 
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyData)
+        body: JSON.stringify(bodyData),
       }).catch(() => {
-        throw new Error("Backend server is waking up on Render. Please wait 15 seconds and try again.");
+        throw new Error("Backend server is starting up. Please wait 15 seconds and try again.");
       });
 
       const data = await res.json();
@@ -51,15 +51,9 @@ export default function LoginPage() {
 
       if (mode === "REGISTER") {
         setGeneratedPasskey(data.security_passkey);
-        localStorage.setItem("orderdesk_org_name", data.organization_name);
-        localStorage.setItem("orderdesk_org_id", data.organization_id);
-        localStorage.setItem("orderdesk_user_email", data.email);
-        localStorage.setItem("orderdesk_passkey", data.security_passkey);
       } else if (mode === "LOGIN") {
         localStorage.setItem("orderdesk_org_name", data.organization_name);
-        localStorage.setItem("orderdesk_org_id", data.organization_id);
         localStorage.setItem("orderdesk_user_email", data.email);
-        localStorage.setItem("orderdesk_passkey", data.security_passkey);
         router.push("/");
       } else if (mode === "RESET") {
         setSuccessMsg("Password reset successfully! Please sign in with your new password.");
@@ -98,7 +92,7 @@ export default function LoginPage() {
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             {mode === "LOGIN" && "Manage wholesale orders & live inventory"}
-            {mode === "REGISTER" && "Get your unique security passkey"}
+            {mode === "REGISTER" && "Get your unique high-entropy passkey"}
             {mode === "RESET" && "Authorize password change with your security passkey"}
           </p>
         </div>
@@ -121,17 +115,17 @@ export default function LoginPage() {
             <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-left">
               <span className="text-xs font-bold text-amber-800 uppercase block mb-1">🔑 Save Your Unique Passkey</span>
               <p className="text-[11px] text-amber-700 mb-2">
-                This passkey is required to reset your password if you ever forget it. Store it in a safe place.
+                This passkey is shown ONCE. It is required to reset your password if you ever forget it. Store it safely.
               </p>
-              <div className="bg-white border border-amber-300 font-mono font-bold text-lg text-slate-900 p-3 rounded-xl text-center tracking-widest">
+              <div className="bg-white border border-amber-300 font-mono font-bold text-base text-slate-900 p-3 rounded-xl text-center tracking-wider break-all">
                 {generatedPasskey}
               </div>
             </div>
             <button
-              onClick={() => router.push("/")}
+              onClick={() => setMode("LOGIN")}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-sm shadow-md"
             >
-              Continue to Dashboard →
+              Proceed to Sign In →
             </button>
           </div>
         ) : (
@@ -168,6 +162,7 @@ export default function LoginPage() {
                 <input
                   type="password"
                   required
+                  minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -185,7 +180,7 @@ export default function LoginPage() {
                     required
                     value={passkey}
                     onChange={(e) => setPasskey(e.target.value)}
-                    placeholder="ORD-XXXX-XXXX"
+                    placeholder="ORD-XXXX-XXXX-XXXX"
                     className="w-full mt-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-mono uppercase tracking-wider text-slate-900 focus:outline-indigo-600"
                   />
                 </div>
@@ -194,6 +189,7 @@ export default function LoginPage() {
                   <input
                     type="password"
                     required
+                    minLength={8}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="••••••••"
