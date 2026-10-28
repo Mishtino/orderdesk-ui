@@ -10,6 +10,7 @@ interface Product {
   id: string;
   sku: string;
   title: string;
+  category?: string;
   wholesale_price: number;
   stock_quantity: number;
   reorder_level: number;
@@ -56,6 +57,15 @@ export default function SupplierDashboard() {
   const [userEmail, setUserEmail] = useState<string>("");
   const [orgName, setOrgName] = useState<string>("");
 
+  // MULTI-CURRENCY & SEARCH STATES
+  const [currency, setCurrency] = useState<"USD" | "ZiG">("USD");
+  const [zigRate, setZigRate] = useState<number>(26.50);
+  const [editingRate, setEditingRate] = useState<boolean>(false);
+  const [rateInput, setRateInput] = useState<string>("26.50");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [filterCategory, setFilterCategory] = useState<string>("ALL");
+  const [showLowStockOnly, setShowLowStockOnly] = useState<boolean>(false);
+
   // Customer Form State
   const [newCompany, setNewCompany] = useState("");
   const [newEmail, setNewEmail] = useState("");
@@ -74,6 +84,7 @@ export default function SupplierDashboard() {
       setOrgName(storedOrg || "Supplier Org");
       setAuthenticated(true);
       fetchDashboardData();
+      fetchExchangeRate();
     }
   }, [router]);
 
@@ -100,6 +111,46 @@ export default function SupplierDashboard() {
     }
   };
 
+  const fetchExchangeRate = async () => {
+    try {
+      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/settings/rate");
+      const data = await res.json();
+      if (data.zig_exchange_rate) {
+        setZigRate(data.zig_exchange_rate);
+        setRateInput(data.zig_exchange_rate.toString());
+      }
+    } catch (err) {
+      console.error("Failed to load exchange rate:", err);
+    }
+  };
+
+  const handleSaveRate = async () => {
+    const parsed = parseFloat(rateInput);
+    if (!parsed || parsed <= 0) return;
+
+    try {
+      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/settings/rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zig_exchange_rate: parsed })
+      });
+      if (res.ok) {
+        setZigRate(parsed);
+        setEditingRate(false);
+      }
+    } catch (err) {
+      console.error("Failed to update rate:", err);
+    }
+  };
+
+  const formatPrice = (usdAmount: number) => {
+    if (currency === "ZiG") {
+      const zigVal = usdAmount * zigRate;
+      return `ZiG ${zigVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    return `$${usdAmount.toFixed(2)}`;
+  };
+
   const handleStatusChange = async (orderId: string, currentStatus: string) => {
     const pipeline = ["PENDING", "CONFIRMED", "PACKED", "DISPATCHED", "DELIVERED"];
     const currentIndex = pipeline.indexOf(currentStatus.toUpperCase());
@@ -120,7 +171,6 @@ export default function SupplierDashboard() {
     }
   };
 
-  // FIX #4: FAST DEBOUNCED CUSTOMER CREATION
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submittingCustomer) return;
@@ -161,7 +211,6 @@ export default function SupplierDashboard() {
     }
   };
 
-  // FIX #3: DELETE CUSTOMER ACCOUNT
   const handleDeleteCustomer = async (id: string) => {
     if (!confirm("Are you sure you want to remove this retailer account?")) return;
 
@@ -205,6 +254,16 @@ export default function SupplierDashboard() {
     );
   }
 
+  // SEARCH AND CATEGORY FILTER LOGIC
+  const categories = Array.from(new Set(products.map((p) => p.category || "General")));
+  
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = filterCategory === "ALL" || (p.category || "General") === filterCategory;
+    const matchesLowStock = !showLowStockOnly || p.stock_quantity <= (p.reorder_level || 10);
+    return matchesSearch && matchesCategory && matchesLowStock;
+  });
+
   const lowStockItems = products.filter((p) => p.stock_quantity <= (p.reorder_level || 10));
   const ordersShipped = orders.filter((o) => o.status === "SHIPPED" || o.status === "DELIVERED").length;
 
@@ -238,6 +297,58 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
+        {/* Feature #1 Multi-Currency Bar */}
+        <div className="bg-slate-900 text-white rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md print:hidden">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-extrabold uppercase tracking-widest text-indigo-400">
+              Multi-Currency Engine
+            </span>
+            <div className="bg-slate-800 p-1 rounded-xl flex items-center border border-slate-700">
+              <button
+                onClick={() => setCurrency("USD")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                  currency === "USD" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                USD ($)
+              </button>
+              <button
+                onClick={() => setCurrency("ZiG")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                  currency === "ZiG" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ZiG (Zimbabwe Gold)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-slate-400">Manual Rate:</span>
+            {editingRate ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={rateInput}
+                  onChange={(e) => setRateInput(e.target.value)}
+                  className="w-20 px-2 py-1 rounded-lg text-slate-900 font-bold text-xs"
+                />
+                <button onClick={handleSaveRate} className="bg-emerald-600 hover:bg-emerald-700 font-bold px-3 py-1 rounded-lg">
+                  Save
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <strong className="text-indigo-300 font-mono text-sm">1 USD = {zigRate.toFixed(2)} ZiG</strong>
+                <button onClick={() => setEditingRate(true)} className="text-[11px] underline text-slate-400 hover:text-white">
+                  Edit
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Low-Stock Alert Banner */}
         {lowStockItems.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 shadow-sm print:hidden">
@@ -246,15 +357,17 @@ export default function SupplierDashboard() {
                 ⚠️ Low Stock Alert
               </span>
               <p className="text-xs sm:text-sm font-bold">
-                {lowStockItems.length} SKU(s) have dropped below reorder threshold:{" "}
-                <span className="underline">{lowStockItems.map((i) => i.sku).join(", ")}</span>
+                {lowStockItems.length} SKU(s) dropped below threshold.
               </p>
             </div>
             <button
-              onClick={() => setShowCsvModal(true)}
+              onClick={() => {
+                setShowLowStockOnly(true);
+                setActiveTab("stock");
+              }}
               className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm whitespace-nowrap"
             >
-              Restock via CSV
+              Filter Low Stock SKUs
             </button>
           </div>
         )}
@@ -346,138 +459,169 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Tab 1: Stock Management */}
+        {/* Tab 1: Stock Management with Search & Filters */}
         {activeTab === "stock" && (
-          <div className="grid lg:grid-cols-2 gap-8 print:hidden">
-            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold text-slate-900">Live Stock Management</h2>
-                <span className="text-xs bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full">
-                  {products.length} SKUs
-                </span>
+          <div className="space-y-6 print:hidden">
+            
+            {/* Feature #2 Search & Filter Control Bar */}
+            <div className="bg-white rounded-3xl p-4 px-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="relative w-full md:w-96">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="🔍 Search SKU or Product Title..."
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-indigo-600"
+                />
               </div>
 
-              {products.length === 0 ? (
-                <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
-                  <p className="text-slate-500 text-sm font-medium">No stock registered yet.</p>
-                  <button
-                    onClick={() => setShowCsvModal(true)}
-                    className="mt-3 text-xs font-bold text-indigo-600 hover:underline"
-                  >
-                    Upload CSV Spreadsheet
-                  </button>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-xs text-slate-400 font-bold uppercase tracking-wider">
-                        <th className="pb-3">SKU</th>
-                        <th className="pb-3">Title</th>
-                        <th className="pb-3">Price</th>
-                        <th className="pb-3">Reorder</th>
-                        <th className="pb-3 text-right">Stock</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {products.map((p) => {
-                        const isLow = p.stock_quantity <= (p.reorder_level || 10);
-                        return (
-                          <tr key={p.id} className="hover:bg-slate-50/50 transition">
-                            <td className="py-3 font-bold text-slate-900">{p.sku}</td>
-                            <td className="py-3 text-slate-600">{p.title}</td>
-                            <td className="py-3 font-semibold text-slate-900">${p.wholesale_price.toFixed(2)}</td>
-                            <td className="py-3 text-xs text-slate-500">{p.reorder_level || 10}</td>
-                            <td className="py-3 text-right">
-                              <span
-                                className={`text-xs px-2.5 py-1 rounded-full font-extrabold ${
-                                  isLow ? "bg-red-100 text-red-700 animate-pulse" : "bg-emerald-100 text-emerald-800"
-                                }`}
-                              >
-                                {p.stock_quantity} units
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto">
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white"
+                >
+                  <option value="ALL">All Categories</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                    showLowStockOnly ? "bg-amber-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {showLowStockOnly ? "Showing Low Stock Only" : "Filter Low Stock"}
+                </button>
+              </div>
             </div>
 
-            {/* Wholesale Pipeline */}
-            <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold text-slate-900">Wholesale Orders Pipeline</h2>
-                <span className="text-xs bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full">
-                  {orders.length} Total
-                </span>
+            <div className="grid lg:grid-cols-2 gap-8">
+              {/* Stock Table */}
+              <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-slate-900">Live Stock Management</h2>
+                  <span className="text-xs bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full">
+                    {filteredProducts.length} / {products.length} SKUs
+                  </span>
+                </div>
+
+                {filteredProducts.length === 0 ? (
+                  <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                    <p className="text-slate-500 text-sm font-medium">No products match your search/filter criteria.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-white border-b border-slate-100">
+                        <tr className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                          <th className="pb-3">SKU</th>
+                          <th className="pb-3">Title</th>
+                          <th className="pb-3">Price ({currency})</th>
+                          <th className="pb-3 text-right">Stock</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredProducts.map((p) => {
+                          const isLow = p.stock_quantity <= (p.reorder_level || 10);
+                          return (
+                            <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                              <td className="py-3 font-bold text-slate-900 text-xs">{p.sku}</td>
+                              <td className="py-3 text-slate-700 text-xs font-medium">{p.title}</td>
+                              <td className="py-3 font-bold text-slate-900 text-xs">{formatPrice(p.wholesale_price)}</td>
+                              <td className="py-3 text-right">
+                                <span
+                                  className={`text-xs px-2.5 py-1 rounded-full font-extrabold ${
+                                    isLow ? "bg-red-100 text-red-700 animate-pulse" : "bg-emerald-100 text-emerald-800"
+                                  }`}
+                                >
+                                  {p.stock_quantity} units
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
-              {orders.length === 0 ? (
-                <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
-                  <p className="text-slate-500 text-sm font-medium">No orders received yet.</p>
+              {/* Wholesale Pipeline */}
+              <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-slate-900">Wholesale Orders Pipeline</h2>
+                  <span className="text-xs bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full">
+                    {orders.length} Total
+                  </span>
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-xs text-slate-400 font-bold uppercase tracking-wider">
-                        <th className="pb-3">Invoice</th>
-                        <th className="pb-3">Client</th>
-                        <th className="pb-3">Total</th>
-                        <th className="pb-3">Status</th>
-                        <th className="pb-3 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {orders.map((o) => {
-                        const statusColors: Record<string, string> = {
-                          PENDING: "bg-amber-100 text-amber-800",
-                          CONFIRMED: "bg-blue-100 text-blue-800",
-                          PACKED: "bg-purple-100 text-purple-800",
-                          DISPATCHED: "bg-indigo-100 text-indigo-800",
-                          DELIVERED: "bg-emerald-100 text-emerald-800",
-                        };
 
-                        return (
-                          <tr key={o.id} className="hover:bg-slate-50/50 transition">
-                            <td className="py-3 font-mono font-bold text-slate-800 text-xs">
-                              {o.invoice_number || "INV-109012"}
-                            </td>
-                            <td className="py-3 font-bold text-slate-900">{o.client_name}</td>
-                            <td className="py-3 font-semibold text-slate-900">${o.total_amount.toFixed(2)}</td>
-                            <td className="py-3">
-                              <button
-                                onClick={() => handleStatusChange(o.id, o.status)}
-                                className={`text-[10px] px-2.5 py-1 rounded-full font-bold shadow-sm transition hover:scale-105 ${
-                                  statusColors[o.status.toUpperCase()] || "bg-slate-100 text-slate-700"
-                                }`}
-                              >
-                                {o.status} →
-                              </button>
-                            </td>
-                            <td className="py-3 text-right">
-                              <button
-                                onClick={() => setSelectedInvoice(o)}
-                                className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg transition shadow-sm"
-                              >
-                                PDF Invoice
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                {orders.length === 0 ? (
+                  <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                    <p className="text-slate-500 text-sm font-medium">No orders received yet.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-white border-b border-slate-100">
+                        <tr className="text-xs text-slate-400 font-bold uppercase tracking-wider">
+                          <th className="pb-3">Invoice</th>
+                          <th className="pb-3">Client</th>
+                          <th className="pb-3">Total ({currency})</th>
+                          <th className="pb-3">Status</th>
+                          <th className="pb-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {orders.map((o) => {
+                          const statusColors: Record<string, string> = {
+                            PENDING: "bg-amber-100 text-amber-800",
+                            CONFIRMED: "bg-blue-100 text-blue-800",
+                            PACKED: "bg-purple-100 text-purple-800",
+                            DISPATCHED: "bg-indigo-100 text-indigo-800",
+                            DELIVERED: "bg-emerald-100 text-emerald-800",
+                          };
+
+                          return (
+                            <tr key={o.id} className="hover:bg-slate-50/50 transition">
+                              <td className="py-3 font-mono font-bold text-slate-800 text-xs">
+                                {o.invoice_number || "INV-109012"}
+                              </td>
+                              <td className="py-3 font-bold text-slate-900 text-xs">{o.client_name}</td>
+                              <td className="py-3 font-bold text-slate-900 text-xs">{formatPrice(o.total_amount)}</td>
+                              <td className="py-3">
+                                <button
+                                  onClick={() => handleStatusChange(o.id, o.status)}
+                                  className={`text-[10px] px-2.5 py-1 rounded-full font-bold shadow-sm transition hover:scale-105 ${
+                                    statusColors[o.status.toUpperCase()] || "bg-slate-100 text-slate-700"
+                                  }`}
+                                >
+                                  {o.status} →
+                                </button>
+                              </td>
+                              <td className="py-3 text-right">
+                                <button
+                                  onClick={() => setSelectedInvoice(o)}
+                                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg transition shadow-sm"
+                                >
+                                  PDF Invoice
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Tab 2: FIX #3 EDITABLE/REMOVABLE RETAILER ACCOUNTS */}
+        {/* Tab 2: Retailer Accounts */}
         {activeTab === "customers" && (
           <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-6 print:hidden">
             <div className="flex items-center justify-between">
@@ -565,7 +709,7 @@ export default function SupplierDashboard() {
               <p><strong>Organization Name:</strong> {orgName}</p>
               <p><strong>Account Email:</strong> {userEmail}</p>
               <p><strong>Subscription Status:</strong> 7-Day Free Trial Active</p>
-              <p><strong>Paynow Integration:</strong> Operational</p>
+              <p><strong>Exchange Rate:</strong> 1 USD = {zigRate.toFixed(2)} ZiG</p>
             </div>
             <Link
               href="/billing"
@@ -589,7 +733,7 @@ export default function SupplierDashboard() {
 
       </div>
 
-      {/* PDF Invoice Modal */}
+      {/* PDF Invoice Modal with Multi-Currency Display */}
       {selectedInvoice && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-8 w-full max-w-2xl border border-slate-200 shadow-2xl relative space-y-6">
@@ -622,7 +766,7 @@ export default function SupplierDashboard() {
                   <p className="text-xs text-slate-500">{userEmail}</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">TAX INVOICE</span>
+                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">TAX INVOICE ({currency})</span>
                   <h3 className="text-lg font-mono font-black text-slate-900 mt-1">
                     {selectedInvoice.invoice_number || "INV-109012"}
                   </h3>
@@ -655,11 +799,11 @@ export default function SupplierDashboard() {
                 <tbody className="divide-y divide-slate-100 font-medium">
                   <tr>
                     <td className="py-3 font-bold text-slate-800">Wholesale Goods Shipment Bundle</td>
-                    <td className="py-3 text-right font-semibold text-slate-900">${selectedInvoice.item_subtotal.toFixed(2)}</td>
+                    <td className="py-3 text-right font-semibold text-slate-900">{formatPrice(selectedInvoice.item_subtotal)}</td>
                   </tr>
                   <tr>
                     <td className="py-3 text-slate-600">Aisle Freight / Express Courier Fee</td>
-                    <td className="py-3 text-right font-semibold text-slate-900">${selectedInvoice.shipping_fee.toFixed(2)}</td>
+                    <td className="py-3 text-right font-semibold text-slate-900">{formatPrice(selectedInvoice.shipping_fee)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -674,8 +818,8 @@ export default function SupplierDashboard() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">TOTAL AMOUNT DUE</span>
-                  <p className="text-2xl font-black text-slate-900 mt-0.5">${selectedInvoice.total_amount.toFixed(2)}</p>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">TOTAL DUE ({currency})</span>
+                  <p className="text-2xl font-black text-slate-900 mt-0.5">{formatPrice(selectedInvoice.total_amount)}</p>
                 </div>
               </div>
             </div>
@@ -683,7 +827,7 @@ export default function SupplierDashboard() {
         </div>
       )}
 
-      {/* FIX #4: FAST CREATION MODAL WITH SUBMIT STATE */}
+      {/* Customer Modal */}
       {showCustomerModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-slate-200 shadow-xl relative">
