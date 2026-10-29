@@ -5,7 +5,7 @@ import { API_BASE, apiJson } from "@/lib/api";
 import CsvUploader from "./components/CsvUploader";
 import { LayoutDashboard, Package, ShoppingCart, Users, Settings, LogOut, Upload, RefreshCw, DollarSign, TrendingUp, Boxes, Search, X, AlertTriangle } from "lucide-react";
 type Product={id:string;sku:string;title:string;category?:string;wholesale_price:number|string;stock_quantity:number};
-type Order={id:string;invoice_number?:string;client_name:string;status:string;total_amount:number|string;created_at:string;payment_status?:string};
+type Order={id:string;invoice_number?:string;client_name:string;status:string;total_amount:number|string;created_at:string;payment_status?:string;courier?:string;tracking_number?:string};
 type Customer={id:string;company_name:string;contact_email:string;phone_number?:string;pricing_tier:string;discount_rate?:number|string};
 const fmt=(v:any)=>(typeof v==="number"?v:parseFloat(v||0)).toFixed(2);
 export default function DashboardPage(){
@@ -46,6 +46,17 @@ export default function DashboardPage(){
  const createCustomer=async(e:React.FormEvent)=>{e.preventDefault();setCustMsg(null);try{await apiJson("/customers",{method:"POST",body:JSON.stringify(newCust)});setCustMsg("Customer created.");setNewCust({company_name:"",contact_email:"",phone_number:"",pricing_tier:"STANDARD",discount_rate:0});fetchAll();}catch(err:any){setCustMsg(err.message);}};
  const updateRate=async(e:React.FormEvent)=>{e.preventDefault();setRateMsg(null);try{const r=await apiJson<any>("/settings/rate",{method:"POST",body:JSON.stringify({zig_exchange_rate:parseFloat(rateInput)})});setRate(r.zig_exchange_rate);setRateMsg("Updated.");}catch(err:any){setRateMsg(err.message);}};
  const revenue=orders.reduce((s,o)=>s+parseFloat(String(o.total_amount||0)),0);
+ const shipOrder=async(id:string)=>{
+  const courier=prompt("Courier name (e.g. DHL, local biker):")||"";
+  const tracking=prompt("Tracking number (optional):")||"";
+  try{
+   await apiJson(`/orders/${id}/ship`,{method:"POST",body:JSON.stringify({courier,tracking_number:tracking})});
+   fetchAll();
+  }catch(e:any){alert(e.message);}
+ };
+ const deliverOrder=async(id:string)=>{
+  try{ await apiJson(`/orders/${id}/deliver`,{method:"POST"}); fetchAll(); }catch(e:any){alert(e.message);}
+ };
  const downloadInvoice=async(id:string)=>{
   try{
    const res=await fetch(`${API_BASE}/orders/${id}/invoice`,{credentials:"include"});
@@ -150,17 +161,22 @@ export default function DashboardPage(){
        <div className="p-4 border-b border-white/5"><h2 className="font-bold text-white">Orders ({fo.length})</h2></div>
        <div className="overflow-x-auto">
         <table className="w-full text-sm">
-         <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">Invoice</th><th className="text-left px-4 py-3">Client</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th><th className="text-right px-4 py-3">Total</th><th className="text-left px-4 py-3">Date</th><th className="text-left px-4 py-3">Actions</th></tr></thead>
+         <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">Invoice</th><th className="text-left px-4 py-3">Client</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th><th className="text-left px-4 py-3">Fulfillment</th><th className="text-right px-4 py-3">Total</th><th className="text-left px-4 py-3">Date</th><th className="text-left px-4 py-3">Actions</th></tr></thead>
          <tbody>
-          {fo.length===0?<tr><td colSpan={6} className="text-center py-10 text-slate-500">No orders.</td></tr>:fo.map(o=>(
+          {fo.length===0?<tr><td colSpan={8} className="text-center py-10 text-slate-500">No orders.</td></tr>:fo.map(o=>(
            <tr key={o.id} className="border-t border-white/5 hover:bg-white/5 transition">
             <td className="px-4 py-3 font-mono text-xs text-indigo-300">{o.invoice_number||o.id.slice(0,8)}</td>
             <td className="px-4 py-3 font-semibold text-white">{o.client_name}</td>
-            <td className="px-4 py-3"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${o.status==="COMPLETED"||o.status==="PAID"?"bg-emerald-500/20 text-emerald-300":o.status==="PENDING"?"bg-amber-500/20 text-amber-300":"bg-slate-500/20 text-slate-300"}`}>{o.status}</span></td>
+            <td className="px-4 py-3"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${o.status==="DELIVERED"?"bg-emerald-500/20 text-emerald-300":o.status==="SHIPPED"?"bg-blue-500/20 text-blue-300":"bg-slate-500/20 text-slate-300"}`}>{o.status}</span></td>
             <td className="px-4 py-3 text-slate-400 text-xs">{o.payment_status||"—"}</td>
+            <td className="px-4 py-3 text-slate-400 text-xs">{o.courier||"—"}{o.tracking_number?` · ${o.tracking_number}`:""}</td>
             <td className="px-4 py-3 text-right font-bold text-white">${fmt(o.total_amount)}</td>
             <td className="px-4 py-3 text-slate-400 text-xs">{new Date(o.created_at).toLocaleDateString()}</td>
-            <td className="px-4 py-3"><button onClick={()=>downloadInvoice(o.id)} className="text-xs font-bold text-indigo-300 hover:text-indigo-200">PDF Invoice</button></td>
+            <td className="px-4 py-3 flex gap-2">
+             <button onClick={()=>downloadInvoice(o.id)} className="text-xs font-bold text-indigo-300 hover:text-indigo-200">PDF</button>
+             {o.status!=="SHIPPED" && o.status!=="DELIVERED" && <button onClick={()=>shipOrder(o.id)} className="text-xs font-bold text-blue-300 hover:text-blue-200">Ship</button>}
+             {o.status==="SHIPPED" && <button onClick={()=>deliverOrder(o.id)} className="text-xs font-bold text-emerald-300 hover:text-emerald-200">Deliver</button>}
+            </td>
            </tr>
           ))}
          </tbody>
