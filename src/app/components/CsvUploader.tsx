@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { API_BASE } from "@/lib/api";
 
 export default function CsvUploader({ onSuccess }: { onSuccess?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
@@ -16,8 +17,9 @@ export default function CsvUploader({ onSuccess }: { onSuccess?: () => void }) {
     formData.append("file", file);
 
     try {
-      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/products/bulk-upload", {
+      const res = await fetch(`${API_BASE}/products/bulk-upload`, {
         method: "POST",
+        credentials: "include",
         body: formData,
       });
 

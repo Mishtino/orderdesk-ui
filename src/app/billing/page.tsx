@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { API_BASE } from "@/lib/api";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -13,7 +14,7 @@ export default function BillingPage() {
     setError(null);
 
     try {
-      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/billing/subscribe", {
+      const res = await fetch(`${API_BASE}/billing/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include", // Critical: Sends your session cookie across domains to Render

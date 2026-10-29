@@ -1,931 +1,237 @@
 "use client";
-
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import Image from "next/image";
+import { API_BASE, apiJson } from "@/lib/api";
 import CsvUploader from "./components/CsvUploader";
-
-interface Product {
-  id: string;
-  sku: string;
-  title: string;
-  category?: string;
-  wholesale_price: number;
-  stock_quantity: number;
-  reorder_level: number;
-  weight_kg: number;
-}
-
-interface Order {
-  id: string;
-  invoice_number?: string;
-  client_name: string;
-  client_email?: string;
-  item_subtotal: number;
-  shipping_fee: number;
-  total_amount: number;
-  status: string;
-  payment_status: string;
-  fulfillment_type: string;
-  delivery_city: string;
-  created_at?: string;
-}
-
-interface Customer {
-  id: string;
-  company_name: string;
-  contact_email: string;
-  phone_number: string;
-  pricing_tier: string;
-  discount_rate: number;
-}
-
-export default function SupplierDashboard() {
-  const router = useRouter();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [submittingCustomer, setSubmittingCustomer] = useState<boolean>(false);
-  const [authenticated, setAuthenticated] = useState<boolean>(false);
-  const [showCsvModal, setShowCsvModal] = useState<boolean>(false);
-  const [showCustomerModal, setShowCustomerModal] = useState<boolean>(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [selectedInvoice, setSelectedInvoice] = useState<Order | null>(null);
-  const [activeTab, setActiveTab] = useState<"stock" | "customers" | "profile" | "users">("stock");
-  const [userEmail, setUserEmail] = useState<string>("");
-  const [orgName, setOrgName] = useState<string>("");
-
-  // MULTI-CURRENCY & SEARCH STATES
-  const [currency, setCurrency] = useState<"USD" | "ZiG">("USD");
-  const [zigRate, setZigRate] = useState<number>(26.50);
-  const [editingRate, setEditingRate] = useState<boolean>(false);
-  const [rateInput, setRateInput] = useState<string>("26.50");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [filterCategory, setFilterCategory] = useState<string>("ALL");
-  const [showLowStockOnly, setShowLowStockOnly] = useState<boolean>(false);
-
-  // Customer Form State
-  const [newCompany, setNewCompany] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [newTier, setNewTier] = useState("STANDARD");
-  const [newDiscount, setNewDiscount] = useState("0");
-
-  useEffect(() => {
-    const storedEmail = localStorage.getItem("orderdesk_user_email");
-    const storedOrg = localStorage.getItem("orderdesk_org_name");
-
-    if (!storedEmail) {
-      router.push("/login");
-    } else {
-      setUserEmail(storedEmail);
-      setOrgName(storedOrg || "Supplier Org");
-      setAuthenticated(true);
-      fetchDashboardData();
-      fetchExchangeRate();
-    }
-  }, [router]);
-
-  const fetchDashboardData = async () => {
-    setLoading(true);
-    try {
-      const [prodRes, orderRes, custRes] = await Promise.all([
-        fetch("https://orderdesk-backend-9gu2.onrender.com/products"),
-        fetch("https://orderdesk-backend-9gu2.onrender.com/orders"),
-        fetch("https://orderdesk-backend-9gu2.onrender.com/customers")
-      ]);
-
-      const prodData = await prodRes.json();
-      const orderData = await orderRes.json();
-      const custData = await custRes.json();
-
-      setProducts(prodData.data || []);
-      setOrders(orderData.data || []);
-      setCustomers(custData.data || []);
-    } catch (error) {
-      console.error("Failed to load dashboard data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchExchangeRate = async () => {
-    try {
-      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/settings/rate");
-      const data = await res.json();
-      if (data.zig_exchange_rate) {
-        setZigRate(data.zig_exchange_rate);
-        setRateInput(data.zig_exchange_rate.toString());
-      }
-    } catch (err) {
-      console.error("Failed to load exchange rate:", err);
-    }
-  };
-
-  const handleSaveRate = async () => {
-    const parsed = parseFloat(rateInput);
-    if (!parsed || parsed <= 0) return;
-
-    try {
-      const res = await fetch("https://orderdesk-backend-9gu2.onrender.com/settings/rate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zig_exchange_rate: parsed })
-      });
-      if (res.ok) {
-        setZigRate(parsed);
-        setEditingRate(false);
-      }
-    } catch (err) {
-      console.error("Failed to update rate:", err);
-    }
-  };
-
-  const formatPrice = (usdAmount: number) => {
-    if (currency === "ZiG") {
-      const zigVal = usdAmount * zigRate;
-      return `ZiG ${zigVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    }
-    return `$${usdAmount.toFixed(2)}`;
-  };
-
-  const handleStatusChange = async (orderId: string, currentStatus: string) => {
-    const pipeline = ["PENDING", "CONFIRMED", "PACKED", "DISPATCHED", "DELIVERED"];
-    const currentIndex = pipeline.indexOf(currentStatus.toUpperCase());
-    const nextStatus = pipeline[(currentIndex + 1) % pipeline.length];
-
-    try {
-      const res = await fetch(`https://orderdesk-backend-9gu2.onrender.com/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-
-      if (res.ok) {
-        fetchDashboardData();
-      }
-    } catch (err) {
-      console.error("Failed to update status:", err);
-    }
-  };
-
-  const handleSaveCustomer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (submittingCustomer) return;
-
-    setSubmittingCustomer(true);
-    try {
-      const url = editingCustomer
-        ? `https://orderdesk-backend-9gu2.onrender.com/customers/${editingCustomer.id}`
-        : "https://orderdesk-backend-9gu2.onrender.com/customers";
-
-      const method = editingCustomer ? "PATCH" : "POST";
-
-      const res = await fetch(url, {
-        method: method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_name: newCompany,
-          contact_email: newEmail,
-          phone_number: newPhone,
-          pricing_tier: newTier,
-          discount_rate: parseFloat(newDiscount) || 0.0
-        })
-      });
-
-      if (res.ok) {
-        setShowCustomerModal(false);
-        setEditingCustomer(null);
-        setNewCompany("");
-        setNewEmail("");
-        setNewPhone("");
-        setNewDiscount("0");
-        await fetchDashboardData();
-      }
-    } catch (err) {
-      console.error("Failed to save customer:", err);
-    } finally {
-      setSubmittingCustomer(false);
-    }
-  };
-
-  const handleDeleteCustomer = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this retailer account?")) return;
-
-    try {
-      const res = await fetch(`https://orderdesk-backend-9gu2.onrender.com/customers/${id}`, {
-        method: "DELETE"
-      });
-      if (res.ok) {
-        fetchDashboardData();
-      }
-    } catch (err) {
-      console.error("Failed to delete customer:", err);
-    }
-  };
-
-  const openEditCustomer = (c: Customer) => {
-    setEditingCustomer(c);
-    setNewCompany(c.company_name);
-    setNewEmail(c.contact_email);
-    setNewPhone(c.phone_number || "");
-    setNewTier(c.pricing_tier);
-    setNewDiscount(c.discount_rate.toString());
-    setShowCustomerModal(true);
-  };
-
-  const handlePrintInvoice = () => {
-    window.print();
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("orderdesk_user_email");
-    localStorage.removeItem("orderdesk_org_name");
-    router.push("/login");
-  };
-
-  if (!authenticated) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white text-sm font-semibold">
-        Redirecting to Supplier Login...
-      </div>
-    );
-  }
-
-  // SEARCH AND CATEGORY FILTER LOGIC
-  const categories = Array.from(new Set(products.map((p) => p.category || "General")));
-  
-  const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = filterCategory === "ALL" || (p.category || "General") === filterCategory;
-    const matchesLowStock = !showLowStockOnly || p.stock_quantity <= (p.reorder_level || 10);
-    return matchesSearch && matchesCategory && matchesLowStock;
-  });
-
-  const lowStockItems = products.filter((p) => p.stock_quantity <= (p.reorder_level || 10));
-  const ordersShipped = orders.filter((o) => o.status === "SHIPPED" || o.status === "DELIVERED").length;
-
-  return (
-    <div className="min-h-screen bg-slate-50/50 p-6 sm:p-10 font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
-        
-        {/* Top Trial Banner */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm print:hidden">
-          <div className="flex items-center gap-3">
-            <span className="bg-white/20 text-xs font-black uppercase px-2.5 py-1 rounded-md">
-              Trial Active
-            </span>
-            <p className="text-xs sm:text-sm font-medium">
-              Welcome, <strong className="font-bold">{orgName}</strong>! You are on the <strong className="font-bold">7-Day Free Trial</strong> (5 days remaining).
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/billing"
-              className="bg-white text-indigo-700 hover:bg-slate-100 font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm"
-            >
-              Upgrade Plan via Paynow
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="bg-black/20 hover:bg-black/40 text-white font-semibold text-xs px-3 py-2 rounded-xl transition"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {/* Feature #1 Multi-Currency Bar */}
-        <div className="bg-slate-900 text-white rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md print:hidden">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-extrabold uppercase tracking-widest text-indigo-400">
-              Multi-Currency Engine
-            </span>
-            <div className="bg-slate-800 p-1 rounded-xl flex items-center border border-slate-700">
-              <button
-                onClick={() => setCurrency("USD")}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
-                  currency === "USD" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                USD ($)
-              </button>
-              <button
-                onClick={() => setCurrency("ZiG")}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
-                  currency === "ZiG" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                ZiG (Zimbabwe Gold)
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 text-xs">
-            <span className="text-slate-400">Manual Rate:</span>
-            {editingRate ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={rateInput}
-                  onChange={(e) => setRateInput(e.target.value)}
-                  className="w-20 px-2 py-1 rounded-lg text-slate-900 font-bold text-xs"
-                />
-                <button onClick={handleSaveRate} className="bg-emerald-600 hover:bg-emerald-700 font-bold px-3 py-1 rounded-lg">
-                  Save
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <strong className="text-indigo-300 font-mono text-sm">1 USD = {zigRate.toFixed(2)} ZiG</strong>
-                <button onClick={() => setEditingRate(true)} className="text-[11px] underline text-slate-400 hover:text-white">
-                  Edit
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Low-Stock Alert Banner */}
-        {lowStockItems.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 shadow-sm print:hidden">
-            <div className="flex items-center gap-3">
-              <span className="bg-amber-500 text-white font-black text-xs px-2.5 py-1 rounded-full animate-pulse">
-                ⚠️ Low Stock Alert
-              </span>
-              <p className="text-xs sm:text-sm font-bold">
-                {lowStockItems.length} SKU(s) dropped below threshold.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setShowLowStockOnly(true);
-                setActiveTab("stock");
-              }}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm whitespace-nowrap"
-            >
-              Filter Low Stock SKUs
-            </button>
-          </div>
-        )}
-
-        {/* Header Navigation */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
-          <div className="flex items-center gap-4">
-            <Image 
-              src="/orderdesk-icon.svg" 
-              alt="OrderDesk Icon" 
-              width={48} 
-              height={48} 
-              className="h-12 w-12 object-contain hidden sm:block" 
-            />
-            <div>
-              <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">
-                Supplier Portal Dashboard
-              </span>
-              <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-0.5">
-                OrderDesk Operations Center
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl">
-            <button
-              onClick={() => setActiveTab("stock")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                activeTab === "stock" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Stock Management
-            </button>
-            <button
-              onClick={() => setActiveTab("customers")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                activeTab === "customers" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Customers & Price Tiers
-            </button>
-            <button
-              onClick={() => setActiveTab("profile")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                activeTab === "profile" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Profile
-            </button>
-            <button
-              onClick={() => setActiveTab("users")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                activeTab === "users" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Users
-            </button>
-          </div>
-        </div>
-
-        {/* Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 print:hidden">
-          <div
-            onClick={() => setShowCsvModal(true)}
-            className="bg-indigo-50 hover:bg-indigo-100/80 cursor-pointer rounded-3xl p-6 border border-indigo-200 transition shadow-sm flex flex-col justify-between"
-          >
-            <div>
-              <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Quick Action</span>
-              <p className="text-lg font-black text-indigo-900 mt-2">Upload CSV for Inventories</p>
-            </div>
-            <span className="text-xs text-indigo-600 font-semibold mt-4">+ Click to import catalog</span>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Retail Buyers</span>
-            <p className="text-3xl font-black text-indigo-600 mt-2">{customers.length}</p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Low-Stock Warnings</span>
-            <p className={`text-3xl font-black mt-2 ${lowStockItems.length > 0 ? "text-amber-600" : "text-emerald-600"}`}>
-              {lowStockItems.length}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Orders Dispatched</span>
-            <p className="text-3xl font-black text-blue-600 mt-2">{ordersShipped}</p>
-          </div>
-        </div>
-
-        {/* Tab 1: Stock Management with Search & Filters */}
-        {activeTab === "stock" && (
-          <div className="space-y-6 print:hidden">
-            
-            {/* Feature #2 Search & Filter Control Bar */}
-            <div className="bg-white rounded-3xl p-4 px-6 border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="relative w-full md:w-96">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="🔍 Search SKU or Product Title..."
-                  className="w-full px-4 py-2 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-indigo-600"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto">
-                <select
-                  value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                  className="px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 bg-white"
-                >
-                  <option value="ALL">All Categories</option>
-                  {categories.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-
-                <button
-                  onClick={() => setShowLowStockOnly(!showLowStockOnly)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                    showLowStockOnly ? "bg-amber-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  {showLowStockOnly ? "Showing Low Stock Only" : "Filter Low Stock"}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid lg:grid-cols-2 gap-8">
-              {/* Stock Table */}
-              <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-slate-900">Live Stock Management</h2>
-                  <span className="text-xs bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full">
-                    {filteredProducts.length} / {products.length} SKUs
-                  </span>
-                </div>
-
-                {filteredProducts.length === 0 ? (
-                  <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
-                    <p className="text-slate-500 text-sm font-medium">No products match your search/filter criteria.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-white border-b border-slate-100">
-                        <tr className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                          <th className="pb-3">SKU</th>
-                          <th className="pb-3">Title</th>
-                          <th className="pb-3">Price ({currency})</th>
-                          <th className="pb-3 text-right">Stock</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {filteredProducts.map((p) => {
-                          const isLow = p.stock_quantity <= (p.reorder_level || 10);
-                          return (
-                            <tr key={p.id} className="hover:bg-slate-50/50 transition">
-                              <td className="py-3 font-bold text-slate-900 text-xs">{p.sku}</td>
-                              <td className="py-3 text-slate-700 text-xs font-medium">{p.title}</td>
-                              <td className="py-3 font-bold text-slate-900 text-xs">{formatPrice(p.wholesale_price)}</td>
-                              <td className="py-3 text-right">
-                                <span
-                                  className={`text-xs px-2.5 py-1 rounded-full font-extrabold ${
-                                    isLow ? "bg-red-100 text-red-700 animate-pulse" : "bg-emerald-100 text-emerald-800"
-                                  }`}
-                                >
-                                  {p.stock_quantity} units
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Wholesale Pipeline */}
-              <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-slate-900">Wholesale Orders Pipeline</h2>
-                  <span className="text-xs bg-slate-100 text-slate-600 font-bold px-3 py-1 rounded-full">
-                    {orders.length} Total
-                  </span>
-                </div>
-
-                {orders.length === 0 ? (
-                  <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
-                    <p className="text-slate-500 text-sm font-medium">No orders received yet.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-white border-b border-slate-100">
-                        <tr className="text-xs text-slate-400 font-bold uppercase tracking-wider">
-                          <th className="pb-3">Invoice</th>
-                          <th className="pb-3">Client</th>
-                          <th className="pb-3">Total ({currency})</th>
-                          <th className="pb-3">Status</th>
-                          <th className="pb-3 text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {orders.map((o) => {
-                          const statusColors: Record<string, string> = {
-                            PENDING: "bg-amber-100 text-amber-800",
-                            CONFIRMED: "bg-blue-100 text-blue-800",
-                            PACKED: "bg-purple-100 text-purple-800",
-                            DISPATCHED: "bg-indigo-100 text-indigo-800",
-                            DELIVERED: "bg-emerald-100 text-emerald-800",
-                          };
-
-                          return (
-                            <tr key={o.id} className="hover:bg-slate-50/50 transition">
-                              <td className="py-3 font-mono font-bold text-slate-800 text-xs">
-                                {o.invoice_number || "INV-109012"}
-                              </td>
-                              <td className="py-3 font-bold text-slate-900 text-xs">{o.client_name}</td>
-                              <td className="py-3 font-bold text-slate-900 text-xs">{formatPrice(o.total_amount)}</td>
-                              <td className="py-3">
-                                <button
-                                  onClick={() => handleStatusChange(o.id, o.status)}
-                                  className={`text-[10px] px-2.5 py-1 rounded-full font-bold shadow-sm transition hover:scale-105 ${
-                                    statusColors[o.status.toUpperCase()] || "bg-slate-100 text-slate-700"
-                                  }`}
-                                >
-                                  {o.status} →
-                                </button>
-                              </td>
-                              <td className="py-3 text-right">
-                                <button
-                                  onClick={() => setSelectedInvoice(o)}
-                                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg transition shadow-sm"
-                                >
-                                  PDF Invoice
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 2: Retailer Accounts */}
-        {activeTab === "customers" && (
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-6 print:hidden">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">Retailer Accounts & Wholesale Price Tiers</h2>
-                <p className="text-xs text-slate-500">Manage buyer discounts, edit contact details, or remove accounts.</p>
-              </div>
-              <button
-                onClick={() => {
-                  setEditingCustomer(null);
-                  setNewCompany("");
-                  setNewEmail("");
-                  setNewPhone("");
-                  setNewTier("STANDARD");
-                  setNewDiscount("0");
-                  setShowCustomerModal(true);
-                }}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-sm"
-              >
-                + Register Retail Customer
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 text-xs text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="pb-3">Company Name</th>
-                    <th className="pb-3">Contact Email</th>
-                    <th className="pb-3">Phone</th>
-                    <th className="pb-3">Pricing Tier</th>
-                    <th className="pb-3">Tier Discount</th>
-                    <th className="pb-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {customers.map((c) => {
-                    const tierColors: Record<string, string> = {
-                      STANDARD: "bg-slate-100 text-slate-800",
-                      BULK_BUYER: "bg-blue-100 text-blue-800",
-                      VIP: "bg-purple-100 text-purple-800",
-                    };
-
-                    return (
-                      <tr key={c.id} className="hover:bg-slate-50/50 transition">
-                        <td className="py-3 font-bold text-slate-900">{c.company_name}</td>
-                        <td className="py-3 text-xs text-slate-600">{c.contact_email}</td>
-                        <td className="py-3 text-xs text-slate-500">{c.phone_number || "N/A"}</td>
-                        <td className="py-3">
-                          <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${tierColors[c.pricing_tier] || "bg-slate-100"}`}>
-                            {c.pricing_tier}
-                          </span>
-                        </td>
-                        <td className="py-3 font-bold text-emerald-600">
-                          {c.discount_rate}% Off Catalog
-                        </td>
-                        <td className="py-3 text-right space-x-2">
-                          <button
-                            onClick={() => openEditCustomer(c)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-3 py-1 rounded-lg transition"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCustomer(c.id)}
-                            className="bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs px-3 py-1 rounded-lg transition"
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 3: Profile */}
-        {activeTab === "profile" && (
-          <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4 print:hidden">
-            <h2 className="text-xl font-bold text-slate-900">Supplier Profile</h2>
-            <div className="space-y-2 text-sm text-slate-600">
-              <p><strong>Organization Name:</strong> {orgName}</p>
-              <p><strong>Account Email:</strong> {userEmail}</p>
-              <p><strong>Subscription Status:</strong> 7-Day Free Trial Active</p>
-              <p><strong>Exchange Rate:</strong> 1 USD = {zigRate.toFixed(2)} ZiG</p>
-            </div>
-            <Link
-              href="/billing"
-              className="inline-block bg-indigo-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl mt-4 hover:bg-indigo-700 transition"
-            >
-              Manage SaaS Billing & Subscription
-            </Link>
-          </div>
-        )}
-
-        {/* Tab 4: Users */}
-        {activeTab === "users" && (
-          <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-sm max-w-2xl space-y-4 print:hidden">
-            <h2 className="text-xl font-bold text-slate-900">User Management</h2>
-            <p className="text-sm text-slate-500">Manage team seats and permissions for your supplier organization.</p>
-            <div className="p-4 bg-slate-50 rounded-2xl text-xs font-mono text-slate-800">
-              • {userEmail} (Owner / Primary Admin)
-            </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* PDF Invoice Modal with Multi-Currency Display */}
-      {selectedInvoice && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-8 w-full max-w-2xl border border-slate-200 shadow-2xl relative space-y-6">
-            <div className="flex items-center justify-between border-b pb-4 print:hidden">
-              <div className="flex items-center gap-2">
-                <Image src="/orderdesk-icon.svg" alt="Logo" width={32} height={32} />
-                <span className="font-extrabold text-slate-900 text-lg">OrderDesk PDF Invoice</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handlePrintInvoice}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-sm"
-                >
-                  🖨️ Print / Save PDF
-                </button>
-                <button
-                  onClick={() => setSelectedInvoice(null)}
-                  className="text-slate-400 hover:text-slate-600 font-bold text-lg px-2"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            <div id="printable-invoice" className="space-y-6 text-slate-800 font-sans p-2">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900">{orgName}</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Wholesale & Logistics Supplier Portal</p>
-                  <p className="text-xs text-slate-500">{userEmail}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">TAX INVOICE ({currency})</span>
-                  <h3 className="text-lg font-mono font-black text-slate-900 mt-1">
-                    {selectedInvoice.invoice_number || "INV-109012"}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Date: {new Date().toLocaleDateString("en-GB")}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
-                <div>
-                  <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px]">BILLED TO</span>
-                  <p className="font-bold text-slate-900 text-sm mt-1">{selectedInvoice.client_name}</p>
-                  <p className="text-slate-500">{selectedInvoice.client_email || "client@orderdesk.co.zw"}</p>
-                </div>
-                <div>
-                  <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px]">FULFILLMENT LOGISTICS</span>
-                  <p className="font-bold text-slate-900 mt-1">{selectedInvoice.fulfillment_type}</p>
-                  <p className="text-slate-500">Destination: {selectedInvoice.delivery_city}</p>
-                </div>
-              </div>
-
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="pb-2">Description</th>
-                    <th className="pb-2 text-right">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  <tr>
-                    <td className="py-3 font-bold text-slate-800">Wholesale Goods Shipment Bundle</td>
-                    <td className="py-3 text-right font-semibold text-slate-900">{formatPrice(selectedInvoice.item_subtotal)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 text-slate-600">Aisle Freight / Express Courier Fee</td>
-                    <td className="py-3 text-right font-semibold text-slate-900">{formatPrice(selectedInvoice.shipping_fee)}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div className="flex justify-between items-center border-t-2 border-slate-200 pt-4">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">PAYMENT STATUS</span>
-                  <div className="mt-1">
-                    <span className="bg-emerald-100 text-emerald-800 font-black text-xs px-3 py-1 rounded-full uppercase">
-                      {selectedInvoice.payment_status || "PAID"}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">TOTAL DUE ({currency})</span>
-                  <p className="text-2xl font-black text-slate-900 mt-0.5">{formatPrice(selectedInvoice.total_amount)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Customer Modal */}
-      {showCustomerModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-slate-200 shadow-xl relative">
-            <button
-              onClick={() => setShowCustomerModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg"
-            >
-              ✕
-            </button>
-            <h3 className="text-lg font-bold text-slate-900 mb-4">
-              {editingCustomer ? "Edit Retailer Account" : "Register Retail Customer Account"}
-            </h3>
-            <form onSubmit={handleSaveCustomer} className="space-y-3 text-xs">
-              <div>
-                <label className="font-bold text-slate-700">Company Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newCompany}
-                  onChange={(e) => setNewCompany(e.target.value)}
-                  placeholder="e.g. Ruwa Express Mart"
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900"
-                />
-              </div>
-              <div>
-                <label className="font-bold text-slate-700">Contact Email</label>
-                <input
-                  type="email"
-                  required
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="manager@ruwamart.co.zw"
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900"
-                />
-              </div>
-              <div>
-                <label className="font-bold text-slate-700">Phone / WhatsApp</label>
-                <input
-                  type="text"
-                  value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="+263771112233"
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900"
-                />
-              </div>
-              <div>
-                <label className="font-bold text-slate-700">Wholesale Price Tier</label>
-                <select
-                  value={newTier}
-                  onChange={(e) => setNewTier(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900 bg-white font-bold"
-                >
-                  <option value="STANDARD">STANDARD (0% Discount)</option>
-                  <option value="BULK_BUYER">BULK_BUYER (5% Discount)</option>
-                  <option value="VIP">VIP (10% Discount)</option>
-                </select>
-              </div>
-              <div>
-                <label className="font-bold text-slate-700">Custom Discount (%)</label>
-                <input
-                  type="number"
-                  value={newDiscount}
-                  onChange={(e) => setNewDiscount(e.target.value)}
-                  placeholder="e.g. 5"
-                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl text-slate-900"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={submittingCustomer}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-xs shadow-md mt-2 disabled:opacity-50"
-              >
-                {submittingCustomer ? "Saving Account..." : editingCustomer ? "Update Account" : "Create Customer Account"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* CSV Uploader Modal */}
-      {showCsvModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-md border border-slate-200 shadow-xl relative">
-            <button
-              onClick={() => setShowCsvModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-lg"
-            >
-              ✕
-            </button>
-            <CsvUploader
-              onSuccess={() => {
-                setShowCsvModal(false);
-                fetchDashboardData();
-              }}
-            />
-          </div>
-        </div>
-      )}
+import { LayoutDashboard, Package, ShoppingCart, Users, Settings, LogOut, Upload, RefreshCw, DollarSign, TrendingUp, Boxes, Search, X } from "lucide-react";
+type Product={id:string;sku:string;title:string;category?:string;wholesale_price:number|string;stock_quantity:number};
+type Order={id:string;invoice_number?:string;client_name:string;status:string;total_amount:number|string;created_at:string;payment_status?:string};
+type Customer={id:string;company_name:string;contact_email:string;phone_number?:string;pricing_tier:string;discount_rate?:number|string};
+const fmt=(v:any)=>(typeof v==="number"?v:parseFloat(v||0)).toFixed(2);
+export default function DashboardPage(){
+ const router=useRouter();
+ const [tab,setTab]=useState<"overview"|"products"|"orders"|"customers"|"settings">("overview");
+ const [user,setUser]=useState<any>(null);
+ const [products,setProducts]=useState<Product[]>([]);
+ const [orders,setOrders]=useState<Order[]>([]);
+ const [customers,setCustomers]=useState<Customer[]>([]);
+ const [rate,setRate]=useState(26.5);
+ const [loading,setLoading]=useState(true);
+ const [refreshing,setRefreshing]=useState(false);
+ const [showCsv,setShowCsv]=useState(false);
+ const [search,setSearch]=useState("");
+ const [newCust,setNewCust]=useState({company_name:"",contact_email:"",phone_number:"",pricing_tier:"STANDARD",discount_rate:0});
+ const [custMsg,setCustMsg]=useState<string|null>(null);
+ const [rateInput,setRateInput]=useState("");
+ const [rateMsg,setRateMsg]=useState<string|null>(null);
+ const fetchAll=async()=>{
+  setRefreshing(true);
+  try{
+   const [p,o,c,r]=await Promise.all([
+    apiJson<{data:Product[]}>("/products"),
+    apiJson<{data:Order[]}>("/orders"),
+    apiJson<{data:Customer[]}>("/customers"),
+    apiJson<{zig_exchange_rate:number}>("/settings/rate"),
+   ]);
+   setProducts(p.data||[]);setOrders(o.data||[]);setCustomers(c.data||[]);
+   setRate(r.zig_exchange_rate||26.5);setRateInput(String(r.zig_exchange_rate||26.5));
+  }catch(e:any){if(String(e.message).includes("401"))router.push("/login");}
+  finally{setRefreshing(false);setLoading(false);}
+ };
+ useEffect(()=>{(async()=>{try{const me=await apiJson<any>("/auth/me");setUser(me);await fetchAll();}catch{router.push("/login");}})();},[]);
+ const handleLogout=async()=>{try{await fetch(`${API_BASE}/auth/logout`,{method:"POST",credentials:"include"});}catch{}router.push("/login");};
+ const createCustomer=async(e:React.FormEvent)=>{e.preventDefault();setCustMsg(null);try{await apiJson("/customers",{method:"POST",body:JSON.stringify(newCust)});setCustMsg("Customer created.");setNewCust({company_name:"",contact_email:"",phone_number:"",pricing_tier:"STANDARD",discount_rate:0});fetchAll();}catch(err:any){setCustMsg(err.message);}};
+ const updateRate=async(e:React.FormEvent)=>{e.preventDefault();setRateMsg(null);try{const r=await apiJson<any>("/settings/rate",{method:"POST",body:JSON.stringify({zig_exchange_rate:parseFloat(rateInput)})});setRate(r.zig_exchange_rate);setRateMsg("Updated.");}catch(err:any){setRateMsg(err.message);}};
+ const revenue=orders.reduce((s,o)=>s+parseFloat(String(o.total_amount||0)),0);
+ const lowStock=products.filter(p=>(p.stock_quantity||0)<=10).length;
+ const fp=products.filter(p=>(p.title+p.sku+(p.category||"")).toLowerCase().includes(search.toLowerCase()));
+ const fo=orders.filter(o=>(o.client_name+(o.invoice_number||"")+o.status).toLowerCase().includes(search.toLowerCase()));
+ const fc=customers.filter(c=>(c.company_name+c.contact_email+(c.phone_number||"")).toLowerCase().includes(search.toLowerCase()));
+ if(loading)return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><RefreshCw className="w-8 h-8 text-indigo-400 animate-spin"/></div>;
+ const nav=[{k:"overview",l:"Overview",i:LayoutDashboard},{k:"products",l:"Products",i:Package},{k:"orders",l:"Orders",i:ShoppingCart},{k:"customers",l:"Customers",i:Users},{k:"settings",l:"Settings",i:Settings}] as const;
+ return (
+  <div className="min-h-screen bg-slate-950 text-slate-100 flex">
+   <aside className="hidden md:flex w-60 bg-slate-900/80 border-r border-white/5 flex-col">
+    <div className="p-5 border-b border-white/5 flex items-center gap-3">
+     <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-fuchsia-600 flex items-center justify-center shadow-lg"><Boxes className="w-5 h-5 text-white"/></div>
+     <div><p className="font-black text-white text-sm leading-none">OrderDesk</p><p className="text-[10px] text-slate-500 mt-1">B2B Engine</p></div>
     </div>
-  );
+    <nav className="flex-1 p-3 space-y-1">
+     {nav.map(n=>{const Icon=n.i;const active=tab===n.k;return(
+      <button key={n.k} onClick={()=>{setTab(n.k);setSearch("");}}
+       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition ${active?"bg-gradient-to-r from-indigo-600/80 to-fuchsia-600/60 text-white shadow":"text-slate-400 hover:text-white hover:bg-white/5"}`}>
+       <Icon className="w-4 h-4"/>{n.l}
+      </button>
+     );})}
+    </nav>
+    <div className="p-4 border-t border-white/5">
+     <div className="flex items-center gap-3 mb-3">
+      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-xs font-black">{(user?.organization_name||"O").charAt(0).toUpperCase()}</div>
+      <div className="min-w-0"><p className="text-xs font-bold text-white truncate">{user?.organization_name||"Organization"}</p><p className="text-[10px] text-slate-500 truncate">{user?.email}</p></div>
+     </div>
+     <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-red-300 hover:bg-red-500/10 transition"><LogOut className="w-3.5 h-3.5"/>Sign out</button>
+    </div>
+   </aside>
+   <main className="flex-1 min-w-0">
+    <header className="sticky top-0 z-20 bg-slate-950/70 backdrop-blur border-b border-white/5 px-4 sm:px-6 py-4 flex items-center gap-3">
+     <div className="flex-1"><h1 className="text-lg font-black text-white capitalize">{tab}</h1></div>
+     <div className="relative hidden sm:block">
+      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search…"
+       className="pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48"/>
+     </div>
+     <button onClick={fetchAll} disabled={refreshing} className="p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition disabled:opacity-50">
+      <RefreshCw className={`w-4 h-4 ${refreshing?"animate-spin":""}`}/>
+     </button>
+    </header>
+    <div className="p-4 sm:p-6 space-y-6">
+     {tab==="overview" && (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+       {[
+        {label:"Total Revenue",value:`$${revenue.toFixed(2)}`,icon:DollarSign,gradient:"from-emerald-500 to-teal-600",sub:`${orders.length} orders`},
+        {label:"Products",value:products.length,icon:Package,gradient:"from-indigo-500 to-blue-600",sub:`${lowStock} low stock`},
+        {label:"Customers",value:customers.length,icon:Users,gradient:"from-fuchsia-500 to-pink-600",sub:"B2B clients"},
+        {label:"ZiG Rate",value:rate.toFixed(2),icon:TrendingUp,gradient:"from-amber-500 to-orange-600",sub:"per 1 USD"},
+       ].map(card=>{const Icon=card.icon;return(
+        <div key={card.label} className="relative overflow-hidden rounded-2xl p-5 bg-white/5 border border-white/10 backdrop-blur">
+         <div className={`absolute -top-6 -right-6 w-24 h-24 rounded-full bg-gradient-to-br ${card.gradient} opacity-20 blur-2xl`}/>
+         <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{card.label}</p>
+          <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${card.gradient} flex items-center justify-center shadow-lg`}><Icon className="w-4 h-4 text-white"/></div>
+         </div>
+         <p className="text-2xl font-black text-white">{card.value}</p>
+         <p className="text-xs text-slate-500 mt-1">{card.sub}</p>
+        </div>
+       );})}
+      </div>
+     )}
+
+     {tab==="products" && (
+      <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+       <div className="p-4 border-b border-white/5 flex items-center justify-between">
+        <h2 className="font-bold text-white">Products ({fp.length})</h2>
+        <button onClick={()=>setShowCsv(true)} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition"><Upload className="w-3.5 h-3.5"/>Upload CSV</button>
+       </div>
+       <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+         <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">SKU</th><th className="text-left px-4 py-3">Title</th><th className="text-left px-4 py-3">Category</th><th className="text-right px-4 py-3">Price</th><th className="text-right px-4 py-3">Stock</th></tr></thead>
+         <tbody>
+          {fp.length===0?<tr><td colSpan={5} className="text-center py-10 text-slate-500">No products.</td></tr>:fp.map(p=>(
+           <tr key={p.id} className="border-t border-white/5 hover:bg-white/5 transition">
+            <td className="px-4 py-3 font-mono text-xs text-indigo-300">{p.sku}</td>
+            <td className="px-4 py-3 font-semibold text-white">{p.title}</td>
+            <td className="px-4 py-3 text-slate-400">{p.category||"General"}</td>
+            <td className="px-4 py-3 text-right text-white">${fmt(p.wholesale_price)}</td>
+            <td className="px-4 py-3 text-right"><span className={`font-bold ${(p.stock_quantity||0)<=10?"text-red-300":"text-emerald-300"}`}>{p.stock_quantity}</span></td>
+           </tr>
+          ))}
+         </tbody>
+        </table>
+       </div>
+      </div>
+     )}
+
+     {tab==="orders" && (
+      <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+       <div className="p-4 border-b border-white/5"><h2 className="font-bold text-white">Orders ({fo.length})</h2></div>
+       <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+         <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">Invoice</th><th className="text-left px-4 py-3">Client</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th><th className="text-right px-4 py-3">Total</th><th className="text-left px-4 py-3">Date</th></tr></thead>
+         <tbody>
+          {fo.length===0?<tr><td colSpan={6} className="text-center py-10 text-slate-500">No orders.</td></tr>:fo.map(o=>(
+           <tr key={o.id} className="border-t border-white/5 hover:bg-white/5 transition">
+            <td className="px-4 py-3 font-mono text-xs text-indigo-300">{o.invoice_number||o.id.slice(0,8)}</td>
+            <td className="px-4 py-3 font-semibold text-white">{o.client_name}</td>
+            <td className="px-4 py-3"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${o.status==="COMPLETED"||o.status==="PAID"?"bg-emerald-500/20 text-emerald-300":o.status==="PENDING"?"bg-amber-500/20 text-amber-300":"bg-slate-500/20 text-slate-300"}`}>{o.status}</span></td>
+            <td className="px-4 py-3 text-slate-400 text-xs">{o.payment_status||"—"}</td>
+            <td className="px-4 py-3 text-right font-bold text-white">${fmt(o.total_amount)}</td>
+            <td className="px-4 py-3 text-slate-400 text-xs">{new Date(o.created_at).toLocaleDateString()}</td>
+           </tr>
+          ))}
+         </tbody>
+        </table>
+       </div>
+      </div>
+     )}
+
+     {tab==="customers" && (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+       <div className="lg:col-span-1 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4 flex items-center gap-2"><Users className="w-4 h-4 text-indigo-400"/>New Customer</h2>
+        <form onSubmit={createCustomer} className="space-y-3">
+         <input value={newCust.company_name} onChange={e=>setNewCust({...newCust,company_name:e.target.value})} placeholder="Company name" required className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <input value={newCust.contact_email} onChange={e=>setNewCust({...newCust,contact_email:e.target.value})} placeholder="contact@email.com" type="email" required className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <input value={newCust.phone_number} onChange={e=>setNewCust({...newCust,phone_number:e.target.value})} placeholder="Phone (optional)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <div className="grid grid-cols-2 gap-2">
+          <select value={newCust.pricing_tier} onChange={e=>setNewCust({...newCust,pricing_tier:e.target.value})} className="px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+           <option value="STANDARD">Standard</option><option value="PREMIUM">Premium</option><option value="VIP">VIP</option>
+          </select>
+          <input value={newCust.discount_rate} onChange={e=>setNewCust({...newCust,discount_rate:parseFloat(e.target.value)||0})} placeholder="Discount %" type="number" min={0} max={100} className="px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         </div>
+         <button type="submit" className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">Create Customer</button>
+         {custMsg && <p className={`text-xs font-semibold ${custMsg.includes("success")?"text-emerald-300":"text-red-300"}`}>{custMsg}</p>}
+        </form>
+       </div>
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+        <div className="p-4 border-b border-white/5"><h2 className="font-bold text-white">Customers ({fc.length})</h2></div>
+        <div className="overflow-x-auto">
+         <table className="w-full text-sm">
+          <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">Company</th><th className="text-left px-4 py-3">Email</th><th className="text-left px-4 py-3">Phone</th><th className="text-left px-4 py-3">Tier</th><th className="text-right px-4 py-3">Discount</th></tr></thead>
+          <tbody>
+           {fc.length===0?<tr><td colSpan={5} className="text-center py-10 text-slate-500">No customers.</td></tr>:fc.map(c=>(
+            <tr key={c.id} className="border-t border-white/5 hover:bg-white/5 transition">
+             <td className="px-4 py-3 font-semibold text-white">{c.company_name}</td>
+             <td className="px-4 py-3 text-slate-400 text-xs">{c.contact_email}</td>
+             <td className="px-4 py-3 text-slate-400 text-xs">{c.phone_number||"—"}</td>
+             <td className="px-4 py-3"><span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">{c.pricing_tier}</span></td>
+             <td className="px-4 py-3 text-right text-slate-300">{c.discount_rate||0}%</td>
+            </tr>
+           ))}
+          </tbody>
+         </table>
+        </div>
+       </div>
+      </div>
+     )}
+
+     {tab==="settings" && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+       <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-amber-400"/>ZiG Exchange Rate</h2>
+        <p className="text-xs text-slate-400 mb-4">Set how many ZiG equal 1 USD.</p>
+        <form onSubmit={updateRate} className="flex gap-2">
+         <input value={rateInput} onChange={e=>setRateInput(e.target.value)} type="number" step="0.0001" className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <button type="submit" className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">Save</button>
+        </form>
+        {rateMsg && <p className={`text-xs font-semibold mt-2 ${rateMsg.includes("Updated")?"text-emerald-300":"text-red-300"}`}>{rateMsg}</p>}
+        <p className="text-xs text-slate-500 mt-3">Current: 1 USD = {rate.toFixed(4)} ZiG</p>
+       </div>
+       <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-emerald-400"/>Subscription & Billing</h2>
+        <p className="text-xs text-slate-400 mb-4">Manage your SaaS plan via Paynow.</p>
+        <a href="/billing" className="block w-full text-center py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-bold text-sm transition">Open Billing Portal</a>
+        <p className="text-[10px] text-slate-500 text-center mt-2">EcoCash, OneMoney, InnBucks & cards.</p>
+       </div>
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-2">Account</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+         <div className="p-3 rounded-xl bg-white/5"><p className="text-[10px] text-slate-500 uppercase tracking-wider">Organization</p><p className="font-semibold text-white">{user?.organization_name}</p></div>
+         <div className="p-3 rounded-xl bg-white/5"><p className="text-[10px] text-slate-500 uppercase tracking-wider">Email</p><p className="font-semibold text-white">{user?.email}</p></div>
+        </div>
+       </div>
+      </div>
+     )}
+    </div>
+   </main>
+   {showCsv && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+     <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-lg w-full relative">
+      <button onClick={()=>setShowCsv(false)} className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-white/5 text-slate-400"><X className="w-4 h-4"/></button>
+      <CsvUploader onSuccess={()=>{setShowCsv(false);fetchAll();}}/>
+     </div>
+    </div>
+   )}
+  </div>
+ );
 }
+

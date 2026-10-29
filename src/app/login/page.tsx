@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
-const BACKEND_URL = "https://orderdesk-backend-9gu2.onrender.com";
+import { API_BASE } from "@/lib/api";
+
+const BACKEND_URL = API_BASE;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -43,6 +45,7 @@ export default function LoginPage() {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(bodyData),
       }).catch(() => {
         throw new Error("Backend server is waking up on Render. Please wait 15 seconds and try again.");
