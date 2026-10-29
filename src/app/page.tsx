@@ -43,6 +43,17 @@ export default function DashboardPage(){
  const createCustomer=async(e:React.FormEvent)=>{e.preventDefault();setCustMsg(null);try{await apiJson("/customers",{method:"POST",body:JSON.stringify(newCust)});setCustMsg("Customer created.");setNewCust({company_name:"",contact_email:"",phone_number:"",pricing_tier:"STANDARD",discount_rate:0});fetchAll();}catch(err:any){setCustMsg(err.message);}};
  const updateRate=async(e:React.FormEvent)=>{e.preventDefault();setRateMsg(null);try{const r=await apiJson<any>("/settings/rate",{method:"POST",body:JSON.stringify({zig_exchange_rate:parseFloat(rateInput)})});setRate(r.zig_exchange_rate);setRateMsg("Updated.");}catch(err:any){setRateMsg(err.message);}};
  const revenue=orders.reduce((s,o)=>s+parseFloat(String(o.total_amount||0)),0);
+ const downloadInvoice=async(id:string)=>{
+  try{
+   const res=await fetch(`${API_BASE}/orders/${id}/invoice`,{credentials:"include"});
+   if(!res.ok) throw new Error("Invoice download failed");
+   const blob=await res.blob();
+   const url=URL.createObjectURL(blob);
+   const a=document.createElement("a");
+   a.href=url; a.download=`invoice-${id}.pdf`; a.click();
+   URL.revokeObjectURL(url);
+  }catch(err:any){ alert(err.message); }
+ };
  const lowStock=products.filter(p=>(p.stock_quantity||0)<=10).length;
  const fp=products.filter(p=>(p.title+p.sku+(p.category||"")).toLowerCase().includes(search.toLowerCase()));
  const fo=orders.filter(o=>(o.client_name+(o.invoice_number||"")+o.status).toLowerCase().includes(search.toLowerCase()));
@@ -136,7 +147,7 @@ export default function DashboardPage(){
        <div className="p-4 border-b border-white/5"><h2 className="font-bold text-white">Orders ({fo.length})</h2></div>
        <div className="overflow-x-auto">
         <table className="w-full text-sm">
-         <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">Invoice</th><th className="text-left px-4 py-3">Client</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th><th className="text-right px-4 py-3">Total</th><th className="text-left px-4 py-3">Date</th></tr></thead>
+         <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">Invoice</th><th className="text-left px-4 py-3">Client</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th><th className="text-right px-4 py-3">Total</th><th className="text-left px-4 py-3">Date</th><th className="text-left px-4 py-3">Actions</th></tr></thead>
          <tbody>
           {fo.length===0?<tr><td colSpan={6} className="text-center py-10 text-slate-500">No orders.</td></tr>:fo.map(o=>(
            <tr key={o.id} className="border-t border-white/5 hover:bg-white/5 transition">
@@ -146,6 +157,7 @@ export default function DashboardPage(){
             <td className="px-4 py-3 text-slate-400 text-xs">{o.payment_status||"—"}</td>
             <td className="px-4 py-3 text-right font-bold text-white">${fmt(o.total_amount)}</td>
             <td className="px-4 py-3 text-slate-400 text-xs">{new Date(o.created_at).toLocaleDateString()}</td>
+            <td className="px-4 py-3"><button onClick={()=>downloadInvoice(o.id)} className="text-xs font-bold text-indigo-300 hover:text-indigo-200">PDF Invoice</button></td>
            </tr>
           ))}
          </tbody>
