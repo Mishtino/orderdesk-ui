@@ -16,6 +16,9 @@ export default function DashboardPage(){
  const [orders,setOrders]=useState<Order[]>([]);
  const [customers,setCustomers]=useState<Customer[]>([]);
  const [alerts,setAlerts]=useState<any[]>([]);
+ const [users,setUsers]=useState<any[]>([]);
+ const [userForm,setUserForm]=useState({email:"",password:"",role:"SALES"});
+ const [userMsg,setUserMsg]=useState<string|null>(null);
  const [rate,setRate]=useState(26.5);
  const [loading,setLoading]=useState(true);
  const [refreshing,setRefreshing]=useState(false);
@@ -41,11 +44,17 @@ export default function DashboardPage(){
   }catch(e:any){if(String(e.message).includes("401"))router.push("/login");}
   finally{setRefreshing(false);setLoading(false);}
  };
- useEffect(()=>{(async()=>{try{const me=await apiJson<any>("/auth/me");setUser(me);await fetchAll();}catch{router.push("/login");}})();},[]);
+ useEffect(()=>{(async()=>{try{const me=await apiJson<any>("/auth/me");setUser(me);await fetchAll();fetchUsers();}catch{router.push("/login");}})();},[]);
  const handleLogout=async()=>{try{await fetch(`${API_BASE}/auth/logout`,{method:"POST",credentials:"include"});}catch{}router.push("/login");};
  const createCustomer=async(e:React.FormEvent)=>{e.preventDefault();setCustMsg(null);try{await apiJson("/customers",{method:"POST",body:JSON.stringify(newCust)});setCustMsg("Customer created.");setNewCust({company_name:"",contact_email:"",phone_number:"",pricing_tier:"STANDARD",discount_rate:0});fetchAll();}catch(err:any){setCustMsg(err.message);}};
  const updateRate=async(e:React.FormEvent)=>{e.preventDefault();setRateMsg(null);try{const r=await apiJson<any>("/settings/rate",{method:"POST",body:JSON.stringify({zig_exchange_rate:parseFloat(rateInput)})});setRate(r.zig_exchange_rate);setRateMsg("Updated.");}catch(err:any){setRateMsg(err.message);}};
  const revenue=orders.reduce((s,o)=>s+parseFloat(String(o.total_amount||0)),0);
+ const fetchUsers=async()=>{
+  try{
+   const r=await apiJson<{data:any[]}>("/users");
+   setUsers(r.data||[]);
+  }catch{}
+ };
  const shipOrder=async(id:string)=>{
   const courier=prompt("Courier name (e.g. DHL, local biker):")||"";
   const tracking=prompt("Tracking number (optional):")||"";
@@ -92,7 +101,7 @@ export default function DashboardPage(){
     <div className="p-4 border-t border-white/5">
      <div className="flex items-center gap-3 mb-3">
       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500 to-indigo-600 flex items-center justify-center text-xs font-black">{(user?.organization_name||"O").charAt(0).toUpperCase()}</div>
-      <div className="min-w-0"><p className="text-xs font-bold text-white truncate">{user?.organization_name||"Organization"}</p><p className="text-[10px] text-slate-500 truncate">{user?.email}</p></div>
+      <div className="min-w-0"><p className="text-xs font-bold text-white truncate">{user?.organization_name||"Organization"}</p><p className="text-[10px] text-slate-500 truncate">{user?.email} · {user?.role}</p></div>
      </div>
      <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-red-300 hover:bg-red-500/10 transition"><LogOut className="w-3.5 h-3.5"/>Sign out</button>
     </div>
@@ -270,6 +279,41 @@ export default function DashboardPage(){
         <p className="text-xs text-slate-400 mb-4">Manage your SaaS plan via Paynow.</p>
         <a href="/billing" className="block w-full text-center py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 text-white font-bold text-sm transition">Open Billing Portal</a>
         <p className="text-[10px] text-slate-500 text-center mt-2">EcoCash, OneMoney, InnBucks & cards.</p>
+       </div>
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4">Team Members ({users.length})</h2>
+        <form onSubmit={async(e)=>{e.preventDefault();setUserMsg(null);try{await apiJson("/users",{method:"POST",body:JSON.stringify(userForm)});setUserMsg("User added.");setUserForm({email:"",password:"",role:"SALES"});fetchUsers();}catch(err:any){setUserMsg(err.message);}}} className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+         <input value={userForm.email} onChange={e=>setUserForm({...userForm,email:e.target.value})} placeholder="Email" type="email" required className="px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <input value={userForm.password} onChange={e=>setUserForm({...userForm,password:e.target.value})} placeholder="Password" type="password" required minLength={8} className="px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <div className="flex gap-2">
+          <select value={userForm.role} onChange={e=>setUserForm({...userForm,role:e.target.value})} className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+           <option value="ADMIN">Admin</option><option value="SALES">Sales</option><option value="WAREHOUSE">Warehouse</option><option value="ACCOUNTANT">Accountant</option>
+          </select>
+          <button type="submit" className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">Add</button>
+         </div>
+        </form>
+        {userMsg && <p className={`text-xs font-semibold mb-3 ${userMsg.includes("added")?"text-emerald-300":"text-red-300"}`}>{userMsg}</p>}
+        <div className="space-y-2">
+         {users.map(u=>(
+          <div key={u.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+           <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{u.email}</p>
+            <p className="text-[10px] text-slate-500">{u.organization_name} · {new Date(u.created_at).toLocaleDateString()}</p>
+           </div>
+           <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">{u.role}</span>
+            {u.id!==user?.id && (
+             <>
+              <select onChange={async(e)=>{try{await apiJson(`/users/${u.id}/role`,{method:"PATCH",body:JSON.stringify({role:e.target.value})});fetchUsers();}catch(err:any){alert(err.message);}}} defaultValue={u.role} className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-xs text-white">
+               <option value="ADMIN">Admin</option><option value="SALES">Sales</option><option value="WAREHOUSE">Warehouse</option><option value="ACCOUNTANT">Accountant</option>
+              </select>
+              <button onClick={async()=>{if(!confirm("Delete user?"))return;try{await apiJson(`/users/${u.id}`,{method:"DELETE"});fetchUsers();}catch(err:any){alert(err.message);}}} className="text-xs text-red-300 hover:text-red-200">Delete</button>
+             </>
+            )}
+           </div>
+          </div>
+         ))}
+        </div>
        </div>
        <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
         <h2 className="font-bold text-white mb-2">Account</h2>
