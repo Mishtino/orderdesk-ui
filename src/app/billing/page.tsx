@@ -59,7 +59,7 @@ export default function BillingPage() {
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Flexible Tier</span>
               <h3 className="text-2xl font-bold text-slate-900 mt-1">Monthly Tier</h3>
               <p className="mt-4 flex items-baseline text-slate-900">
-                <span className="text-5xl font-extrabold tracking-tight">$29.99</span>
+                <span className="text-5xl font-extrabold tracking-tight">$49.00</span>
                 <span className="ml-1 text-xl font-medium text-slate-500">/ month</span>
               </p>
               <ul className="mt-6 space-y-4 text-sm text-slate-600">
@@ -87,12 +87,11 @@ export default function BillingPage() {
               <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Best Value</span>
               <h3 className="text-2xl font-bold text-slate-900 mt-1">Annual Tier</h3>
               <p className="mt-4 flex items-baseline text-slate-900">
-                <span className="text-5xl font-extrabold tracking-tight">$299.00</span>
+                <span className="text-5xl font-extrabold tracking-tight">$499.00</span>
                 <span className="ml-1 text-xl font-medium text-slate-500">/ year</span>
               </p>
               <ul className="mt-6 space-y-4 text-sm text-slate-600">
                 <li className="flex items-center">✓ Everything in Monthly Plan</li>
-                <li className="flex items-center">✓ Dedicated Aisle Logistics Freight Priority</li>
                 <li className="flex items-center">✓ Custom WhatsApp Branding & Responses</li>
                 <li className="flex items-center">✓ Priority 24/7 Support</li>
               </ul>
