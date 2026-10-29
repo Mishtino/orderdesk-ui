@@ -3,18 +3,19 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE, apiJson } from "@/lib/api";
 import CsvUploader from "./components/CsvUploader";
-import { LayoutDashboard, Package, ShoppingCart, Users, Settings, LogOut, Upload, RefreshCw, DollarSign, TrendingUp, Boxes, Search, X } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Users, Settings, LogOut, Upload, RefreshCw, DollarSign, TrendingUp, Boxes, Search, X, AlertTriangle } from "lucide-react";
 type Product={id:string;sku:string;title:string;category?:string;wholesale_price:number|string;stock_quantity:number};
 type Order={id:string;invoice_number?:string;client_name:string;status:string;total_amount:number|string;created_at:string;payment_status?:string};
 type Customer={id:string;company_name:string;contact_email:string;phone_number?:string;pricing_tier:string;discount_rate?:number|string};
 const fmt=(v:any)=>(typeof v==="number"?v:parseFloat(v||0)).toFixed(2);
 export default function DashboardPage(){
  const router=useRouter();
- const [tab,setTab]=useState<"overview"|"products"|"orders"|"customers"|"settings">("overview");
+ const [tab,setTab]=useState<"overview"|"products"|"orders"|"customers"|"alerts"|"settings">("overview");
  const [user,setUser]=useState<any>(null);
  const [products,setProducts]=useState<Product[]>([]);
  const [orders,setOrders]=useState<Order[]>([]);
  const [customers,setCustomers]=useState<Customer[]>([]);
+ const [alerts,setAlerts]=useState<any[]>([]);
  const [rate,setRate]=useState(26.5);
  const [loading,setLoading]=useState(true);
  const [refreshing,setRefreshing]=useState(false);
@@ -27,14 +28,16 @@ export default function DashboardPage(){
  const fetchAll=async()=>{
   setRefreshing(true);
   try{
-   const [p,o,c,r]=await Promise.all([
+   const [p,o,c,r,a]=await Promise.all([
     apiJson<{data:Product[]}>("/products"),
     apiJson<{data:Order[]}>("/orders"),
     apiJson<{data:Customer[]}>("/customers"),
     apiJson<{zig_exchange_rate:number}>("/settings/rate"),
+    apiJson<{data:any[]}>("/inventory/alerts"),
    ]);
    setProducts(p.data||[]);setOrders(o.data||[]);setCustomers(c.data||[]);
    setRate(r.zig_exchange_rate||26.5);setRateInput(String(r.zig_exchange_rate||26.5));
+   setAlerts(a.data||[]);
   }catch(e:any){if(String(e.message).includes("401"))router.push("/login");}
   finally{setRefreshing(false);setLoading(false);}
  };
@@ -59,7 +62,7 @@ export default function DashboardPage(){
  const fo=orders.filter(o=>(o.client_name+(o.invoice_number||"")+o.status).toLowerCase().includes(search.toLowerCase()));
  const fc=customers.filter(c=>(c.company_name+c.contact_email+(c.phone_number||"")).toLowerCase().includes(search.toLowerCase()));
  if(loading)return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><RefreshCw className="w-8 h-8 text-indigo-400 animate-spin"/></div>;
- const nav=[{k:"overview",l:"Overview",i:LayoutDashboard},{k:"products",l:"Products",i:Package},{k:"orders",l:"Orders",i:ShoppingCart},{k:"customers",l:"Customers",i:Users},{k:"settings",l:"Settings",i:Settings}] as const;
+ const nav=[{k:"overview",l:"Overview",i:LayoutDashboard},{k:"products",l:"Products",i:Package},{k:"orders",l:"Orders",i:ShoppingCart},{k:"customers",l:"Customers",i:Users},{k:"alerts",l:"Alerts",i:AlertTriangle},{k:"settings",l:"Settings",i:Settings}] as const;
  return (
   <div className="min-h-screen bg-slate-950 text-slate-100 flex">
    <aside className="hidden md:flex w-60 bg-slate-900/80 border-r border-white/5 flex-col">
@@ -202,6 +205,33 @@ export default function DashboardPage(){
           </tbody>
          </table>
         </div>
+       </div>
+      </div>
+     )}
+
+     {tab==="alerts" && (
+      <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
+       <div className="p-4 border-b border-white/5 flex items-center justify-between">
+        <h2 className="font-bold text-white flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-amber-400"/>Inventory Alerts ({alerts.length})</h2>
+        <button onClick={async()=>{try{const r=await fetch(`${API_BASE}/inventory/notify`,{method:"POST",credentials:"include"});const d=await r.json();alert(d.message||d.status);}catch(e:any){alert(e.message);}}} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition">Notify Me</button>
+       </div>
+       <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+         <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">SKU</th><th className="text-left px-4 py-3">Title</th><th className="text-left px-4 py-3">Category</th><th className="text-right px-4 py-3">Stock</th><th className="text-right px-4 py-3">Reorder Level</th><th className="text-right px-4 py-3">Suggested Reorder</th><th className="text-left px-4 py-3">Severity</th></tr></thead>
+         <tbody>
+          {alerts.length===0?<tr><td colSpan={7} className="text-center py-10 text-slate-500">All stock levels healthy.</td></tr>:alerts.map(a=>(
+           <tr key={a.id} className="border-t border-white/5 hover:bg-white/5 transition">
+            <td className="px-4 py-3 font-mono text-xs text-indigo-300">{a.sku}</td>
+            <td className="px-4 py-3 font-semibold text-white">{a.title}</td>
+            <td className="px-4 py-3 text-slate-400">{a.category||"General"}</td>
+            <td className="px-4 py-3 text-right"><span className={`font-bold ${a.severity==="critical"?"text-red-300":"text-amber-300"}`}>{a.stock_quantity}</span></td>
+            <td className="px-4 py-3 text-right text-slate-300">{a.reorder_level}</td>
+            <td className="px-4 py-3 text-right text-emerald-300 font-bold">{a.suggested_reorder_qty}</td>
+            <td className="px-4 py-3"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${a.severity==="critical"?"bg-red-500/20 text-red-300":"bg-amber-500/20 text-amber-300"}`}>{a.severity}</span></td>
+           </tr>
+          ))}
+         </tbody>
+        </table>
        </div>
       </div>
      )}
