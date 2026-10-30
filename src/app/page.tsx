@@ -184,6 +184,7 @@ export default function DashboardPage(){
             <td className="px-4 py-3 flex gap-2">
              <button onClick={()=>downloadInvoice(o.id)} className="text-xs font-bold text-indigo-300 hover:text-indigo-200">PDF</button>
              <button onClick={async()=>{try{const r=await apiJson(`/orders/${o.id}/send-confirmation`,{method:"POST"});alert(r.status);}catch(e:any){alert(e.message);}}} className="text-xs font-bold text-purple-300 hover:text-purple-200">Email</button>
+             {o.payment_status!=="PAID" && <button onClick={async()=>{try{const r=await apiJson(`/orders/${o.id}/payment-reminder`,{method:"POST"});alert(r.status);}catch(e:any){alert(e.message);}}} className="text-xs font-bold text-amber-300 hover:text-amber-200">Remind</button>}
              {o.status!=="SHIPPED" && o.status!=="DELIVERED" && <button onClick={()=>shipOrder(o.id)} className="text-xs font-bold text-blue-300 hover:text-blue-200">Ship</button>}
              {o.status==="SHIPPED" && <button onClick={()=>deliverOrder(o.id)} className="text-xs font-bold text-emerald-300 hover:text-emerald-200">Deliver</button>}
             </td>
