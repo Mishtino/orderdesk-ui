@@ -356,6 +356,13 @@ export default function DashboardPage(){
 
        </div>
        <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4">Webhooks</h2>
+        <button onClick={async()=>{const url=prompt("Webhook URL:");if(!url)return;const ev=prompt("Events (comma, or *):","*")||"*";try{await apiJson("/webhooks",{method:"POST",body:JSON.stringify({url,events:ev})});alert("Webhook created");}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">Add Webhook</button>
+        <button onClick={async()=>{try{const r=await apiJson<any>("/webhooks");alert(JSON.stringify(r.data,null,2));}catch(e:any){alert(e.message);}}} className="ml-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-sm transition">List</button>
+        <button onClick={async()=>{const id=prompt("Webhook ID to delete:");if(!id)return;try{await apiJson(`/webhooks/${id}`,{method:"DELETE"});alert("Deleted");}catch(e:any){alert(e.message);}}} className="ml-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm transition">Delete</button>
+       </div>
+
         <h2 className="font-bold text-white mb-2">Account</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
          <div className="p-3 rounded-xl bg-white/5"><p className="text-[10px] text-slate-500 uppercase tracking-wider">Organization</p><p className="font-semibold text-white">{user?.organization_name}</p></div>
