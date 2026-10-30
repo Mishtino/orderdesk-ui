@@ -19,7 +19,9 @@ export default function LoginPage() {
   const [generatedPasskey, setGeneratedPasskey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [twoFaTemp, setTwoFaTemp] = useState<string | null>(null);
+ const [twoFaCode, setTwoFaCode] = useState("");
+ const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,6 +59,10 @@ export default function LoginPage() {
       if (mode === "REGISTER") {
         setGeneratedPasskey(data.security_passkey);
       } else if (mode === "LOGIN") {
+        if (data.status === "2fa_required") {
+          setTwoFaTemp(data.temp_token);
+          return;
+        }
         localStorage.setItem("orderdesk_org_name", data.organization_name || "Supplier Org");
         localStorage.setItem("orderdesk_user_email", data.email || email);
         router.push("/");
@@ -70,6 +76,23 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+  if (twoFaTemp) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-800">
+          <h1 className="text-2xl font-black text-slate-900 mb-2">Two-Factor Authentication</h1>
+          <p className="text-xs text-slate-500 mb-6">Enter the 6-digit code from your authenticator app.</p>
+          <form onSubmit={async (e)=>{e.preventDefault();setLoading(true);setError(null);try{const res=await fetch(`${BACKEND_URL}/auth/2fa/login`,{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({temp_token:twoFaTemp,code:twoFaCode})});const data=await res.json();if(!res.ok) throw new Error(data.detail||"Invalid code");localStorage.setItem("orderdesk_org_name",data.organization_name||"Supplier Org");localStorage.setItem("orderdesk_user_email",data.email||email);router.push("/");}catch(err:any){setError(err.message);}finally{setLoading(false);}}} className="space-y-4">
+            <input type="text" inputMode="numeric" maxLength={6} required value={twoFaCode} onChange={e=>setTwoFaCode(e.target.value)} placeholder="123456" className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-indigo-600 text-center tracking-widest font-mono" />
+            {error && <div className="text-xs text-red-600 font-semibold">{error}</div>}
+            <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition text-sm shadow-md disabled:opacity-50">{loading?"Verifying...":"Verify"}</button>
+          </form>
+          <button onClick={()=>{setTwoFaTemp(null);setTwoFaCode("");}} className="mt-4 text-xs text-slate-500 hover:text-indigo-600">← Back</button>
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans">

@@ -342,6 +342,37 @@ export default function DashboardPage(){
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
          <div className="p-3 rounded-xl bg-white/5"><p className="text-[10px] text-slate-500 uppercase tracking-wider">Organization</p><p className="font-semibold text-white">{user?.organization_name}</p></div>
          <div className="p-3 rounded-xl bg-white/5"><p className="text-[10px] text-slate-500 uppercase tracking-wider">Email</p><p className="font-semibold text-white">{user?.email}</p></div>
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4">Usage & Plan</h2>
+        <button onClick={async()=>{try{const u=await apiJson<any>("/usage");alert(JSON.stringify(u,null,2));}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">View Usage</button>
+        <div className="mt-3 flex gap-2">
+         {["free","starter","pro"].map(p=>(
+          <button key={p} onClick={async()=>{try{await apiJson("/settings/plan",{method:"PATCH",body:JSON.stringify({plan:p})});alert("Plan updated to "+p);}catch(e:any){alert(e.message);}}} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-white">{p}</button>
+         ))}
+        </div>
+       </div>
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4">API Keys</h2>
+        <button onClick={async()=>{const name=prompt("Key name:");if(!name)return;try{const r=await apiJson<any>("/api-keys",{method:"POST",body:JSON.stringify({name})});alert("Created key (copy now, shown once):\\n"+r.key);}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">Create API Key</button>
+        <button onClick={async()=>{try{const r=await apiJson<any>("/api-keys");alert(JSON.stringify(r.data,null,2));}catch(e:any){alert(e.message);}}} className="ml-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-sm transition">List Keys</button>
+       </div>
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4">Two-Factor Authentication (2FA)</h2>
+        <div className="flex gap-2">
+         <button onClick={async()=>{try{const r=await apiJson<any>("/auth/2fa/setup",{method:"POST"});const w=window.open();if(w){w.document.write("<img src='data:image/png;base64,"+r.qr_png_base64+"'/>");}prompt("Secret (save in authenticator):",r.secret);}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">Setup 2FA</button>
+         <button onClick={async()=>{const code=prompt("Enter 6-digit code to verify:");if(!code)return;try{await apiJson("/auth/2fa/verify-setup",{method:"POST",body:JSON.stringify({code})});alert("2FA enabled");}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition">Verify & Enable</button>
+         <button onClick={async()=>{const code=prompt("Enter code to disable:");if(!code)return;try{await apiJson("/auth/2fa/disable",{method:"POST",body:JSON.stringify({code})});alert("2FA disabled");}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm transition">Disable</button>
+        </div>
+       </div>
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4">Branding</h2>
+        <div className="flex gap-2">
+         <input id="brandName" placeholder="Brand name" className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <input id="brandColor" placeholder="#6366f1" className="w-28 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <button onClick={async()=>{const name=(document.getElementById("brandName") as HTMLInputElement).value;const color=(document.getElementById("brandColor") as HTMLInputElement).value;try{await apiJson("/settings/branding",{method:"PATCH",body:JSON.stringify({brand_name:name,brand_color:color})});alert("Branding saved");}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">Save</button>
+        </div>
+       </div>
+
         </div>
        </div>
       </div>
