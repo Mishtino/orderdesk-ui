@@ -28,6 +28,7 @@ export default function DashboardPage(){
  const [custMsg,setCustMsg]=useState<string|null>(null);
  const [rateInput,setRateInput]=useState("");
  const [rateMsg,setRateMsg]=useState<string|null>(null);
+ const [onboarding,setOnboarding]=useState<any>(null);
  const [taxRateInput,setTaxRateInput]=useState("");
  const fetchAll=async()=>{
   setRefreshing(true);
@@ -46,7 +47,7 @@ export default function DashboardPage(){
   }catch(e:any){if(String(e.message).includes("401"))router.push("/login");}
   finally{setRefreshing(false);setLoading(false);}
  };
- useEffect(()=>{(async()=>{try{const me=await apiJson<any>("/auth/me");setUser(me);await fetchAll();fetchUsers();}catch{router.push("/login");}})();},[]);
+ useEffect(()=>{(async()=>{try{const me=await apiJson<any>("/auth/me");setUser(me);await fetchAll();fetchUsers();try{const ob=await apiJson<any>("/onboarding");setOnboarding(ob);}catch{}}catch{router.push("/login");}})();},[]);
  const handleLogout=async()=>{try{await fetch(`${API_BASE}/auth/logout`,{method:"POST",credentials:"include"});}catch{}router.push("/login");};
  const createCustomer=async(e:React.FormEvent)=>{e.preventDefault();setCustMsg(null);try{await apiJson("/customers",{method:"POST",body:JSON.stringify(newCust)});setCustMsg("Customer created.");setNewCust({company_name:"",contact_email:"",phone_number:"",pricing_tier:"STANDARD",discount_rate:0});fetchAll();}catch(err:any){setCustMsg(err.message);}};
  const updateRate=async(e:React.FormEvent)=>{e.preventDefault();setRateMsg(null);try{const r=await apiJson<any>("/settings/rate",{method:"POST",body:JSON.stringify({zig_exchange_rate:parseFloat(rateInput),tax_rate:parseFloat(taxRateInput)})});setRate(r.zig_exchange_rate);setTaxRateInput(String(r.tax_rate||0));setRateMsg("Updated.");}catch(err:any){setRateMsg(err.message);}};
@@ -132,6 +133,18 @@ export default function DashboardPage(){
      </button>
     </header>
     <div className="p-4 sm:p-6 space-y-6">
+     {tab==="overview" && onboarding && !(onboarding.has_products && onboarding.has_customers) && (
+      <div className="rounded-2xl bg-gradient-to-r from-indigo-600/20 to-fuchsia-600/20 border border-indigo-500/30 p-5">
+       <h2 className="font-bold text-white mb-2">Welcome to OrderDesk — let's get you set up</h2>
+       <ul className="text-sm text-slate-300 space-y-1">
+        <li>{onboarding.has_products ? "✅" : "⬜"} Add your first products (Products tab → bulk upload CSV)</li>
+        <li>{onboarding.has_customers ? "✅" : "⬜"} Add your first customer (Customers tab)</li>
+        <li>⬜ Create your first order (Orders tab)</li>
+        <li>⬜ Configure tax rate & ZiG rate (Settings tab)</li>
+       </ul>
+      </div>
+     )}
+
      {tab==="overview" && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
        {[
