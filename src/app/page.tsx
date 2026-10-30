@@ -28,6 +28,7 @@ export default function DashboardPage(){
  const [custMsg,setCustMsg]=useState<string|null>(null);
  const [rateInput,setRateInput]=useState("");
  const [rateMsg,setRateMsg]=useState<string|null>(null);
+ const [taxRateInput,setTaxRateInput]=useState("");
  const fetchAll=async()=>{
   setRefreshing(true);
   try{
@@ -35,11 +36,12 @@ export default function DashboardPage(){
     apiJson<{data:Product[]}>("/products"),
     apiJson<{data:Order[]}>("/orders"),
     apiJson<{data:Customer[]}>("/customers"),
-    apiJson<{zig_exchange_rate:number}>("/settings/rate"),
+    apiJson<{zig_exchange_rate:number; tax_rate:number}>("/settings/rate"),
     apiJson<{data:any[]}>("/inventory/alerts"),
    ]);
    setProducts(p.data||[]);setOrders(o.data||[]);setCustomers(c.data||[]);
    setRate(r.zig_exchange_rate||26.5);setRateInput(String(r.zig_exchange_rate||26.5));
+   setTaxRateInput(String(r.tax_rate||0));
    setAlerts(a.data||[]);
   }catch(e:any){if(String(e.message).includes("401"))router.push("/login");}
   finally{setRefreshing(false);setLoading(false);}
@@ -47,8 +49,19 @@ export default function DashboardPage(){
  useEffect(()=>{(async()=>{try{const me=await apiJson<any>("/auth/me");setUser(me);await fetchAll();fetchUsers();}catch{router.push("/login");}})();},[]);
  const handleLogout=async()=>{try{await fetch(`${API_BASE}/auth/logout`,{method:"POST",credentials:"include"});}catch{}router.push("/login");};
  const createCustomer=async(e:React.FormEvent)=>{e.preventDefault();setCustMsg(null);try{await apiJson("/customers",{method:"POST",body:JSON.stringify(newCust)});setCustMsg("Customer created.");setNewCust({company_name:"",contact_email:"",phone_number:"",pricing_tier:"STANDARD",discount_rate:0});fetchAll();}catch(err:any){setCustMsg(err.message);}};
- const updateRate=async(e:React.FormEvent)=>{e.preventDefault();setRateMsg(null);try{const r=await apiJson<any>("/settings/rate",{method:"POST",body:JSON.stringify({zig_exchange_rate:parseFloat(rateInput)})});setRate(r.zig_exchange_rate);setRateMsg("Updated.");}catch(err:any){setRateMsg(err.message);}};
+ const updateRate=async(e:React.FormEvent)=>{e.preventDefault();setRateMsg(null);try{const r=await apiJson<any>("/settings/rate",{method:"POST",body:JSON.stringify({zig_exchange_rate:parseFloat(rateInput),tax_rate:parseFloat(taxRateInput)})});setRate(r.zig_exchange_rate);setTaxRateInput(String(r.tax_rate||0));setRateMsg("Updated.");}catch(err:any){setRateMsg(err.message);}};
  const revenue=orders.reduce((s,o)=>s+parseFloat(String(o.total_amount||0)),0);
+ const downloadExport=async(kind:string)=>{
+  try{
+   const res=await fetch(`${API_BASE}/export/${kind}`,{credentials:"include"});
+   if(!res.ok) throw new Error("Export failed");
+   const blob=await res.blob();
+   const url=URL.createObjectURL(blob);
+   const a=document.createElement("a");
+   a.href=url; a.download=`${kind}.csv`; a.click();
+   URL.revokeObjectURL(url);
+  }catch(e:any){alert(e.message);}
+ };
  const fetchUsers=async()=>{
   try{
    const r=await apiJson<{data:any[]}>("/users");
@@ -144,7 +157,10 @@ export default function DashboardPage(){
       <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
        <div className="p-4 border-b border-white/5 flex items-center justify-between">
         <h2 className="font-bold text-white">Products ({fp.length})</h2>
-        <button onClick={()=>setShowCsv(true)} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition"><Upload className="w-3.5 h-3.5"/>Upload CSV</button>
+        <div className="flex gap-2">
+         <button onClick={()=>downloadExport("products")} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white text-xs font-bold transition">Export CSV</button>
+         <button onClick={()=>setShowCsv(true)} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition"><Upload className="w-3.5 h-3.5"/>Upload CSV</button>
+        </div>
        </div>
        <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -167,7 +183,10 @@ export default function DashboardPage(){
 
      {tab==="orders" && (
       <div className="rounded-2xl bg-white/5 border border-white/10 overflow-hidden">
-       <div className="p-4 border-b border-white/5"><h2 className="font-bold text-white">Orders ({fo.length})</h2></div>
+       <div className="p-4 border-b border-white/5 flex items-center justify-between">
+        <h2 className="font-bold text-white">Orders ({fo.length})</h2>
+        <button onClick={()=>downloadExport("orders")} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white text-xs font-bold transition">Export CSV</button>
+       </div>
        <div className="overflow-x-auto">
         <table className="w-full text-sm">
          <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">Invoice</th><th className="text-left px-4 py-3">Client</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Payment</th><th className="text-left px-4 py-3">Fulfillment</th><th className="text-right px-4 py-3">Total</th><th className="text-left px-4 py-3">Date</th><th className="text-left px-4 py-3">Actions</th></tr></thead>
@@ -185,6 +204,7 @@ export default function DashboardPage(){
              <button onClick={()=>downloadInvoice(o.id)} className="text-xs font-bold text-indigo-300 hover:text-indigo-200">PDF</button>
              <button onClick={async()=>{try{const r=await apiJson(`/orders/${o.id}/send-confirmation`,{method:"POST"});alert(r.status);}catch(e:any){alert(e.message);}}} className="text-xs font-bold text-purple-300 hover:text-purple-200">Email</button>
              {o.payment_status!=="PAID" && <button onClick={async()=>{try{const r=await apiJson(`/orders/${o.id}/payment-reminder`,{method:"POST"});alert(r.status);}catch(e:any){alert(e.message);}}} className="text-xs font-bold text-amber-300 hover:text-amber-200">Remind</button>}
+             <button onClick={async()=>{const n=prompt("Add note:");if(!n)return;try{await apiJson(`/orders/${o.id}/notes`,{method:"POST",body:JSON.stringify({note:n})});alert("Note added");}catch(e:any){alert(e.message);}}} className="text-xs font-bold text-slate-300 hover:text-slate-200">Note</button>
              {o.status!=="SHIPPED" && o.status!=="DELIVERED" && <button onClick={()=>shipOrder(o.id)} className="text-xs font-bold text-blue-300 hover:text-blue-200">Ship</button>}
              {o.status==="SHIPPED" && <button onClick={()=>deliverOrder(o.id)} className="text-xs font-bold text-emerald-300 hover:text-emerald-200">Deliver</button>}
             </td>
@@ -270,10 +290,11 @@ export default function DashboardPage(){
         <p className="text-xs text-slate-400 mb-4">Set how many ZiG equal 1 USD.</p>
         <form onSubmit={updateRate} className="flex gap-2">
          <input value={rateInput} onChange={e=>setRateInput(e.target.value)} type="number" step="0.0001" className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+         <input value={taxRateInput} onChange={e=>setTaxRateInput(e.target.value)} type="number" step="0.01" placeholder="Tax %" className="w-24 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
          <button type="submit" className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">Save</button>
         </form>
         {rateMsg && <p className={`text-xs font-semibold mt-2 ${rateMsg.includes("Updated")?"text-emerald-300":"text-red-300"}`}>{rateMsg}</p>}
-        <p className="text-xs text-slate-500 mt-3">Current: 1 USD = {rate.toFixed(4)} ZiG</p>
+        <p className="text-xs text-slate-500 mt-3">Current: 1 USD = {rate.toFixed(4)} ZiG · Tax: {taxRateInput}%</p>
        </div>
        <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
         <h2 className="font-bold text-white mb-4 flex items-center gap-2"><DollarSign className="w-4 h-4 text-emerald-400"/>Subscription & Billing</h2>
