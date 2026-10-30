@@ -349,6 +349,11 @@ export default function DashboardPage(){
           </div>
          ))}
         </div>
+       <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
+        <h2 className="font-bold text-white mb-4">Audit Log</h2>
+        <button onClick={async()=>{try{const r=await apiJson<any>("/audit-logs?limit=50");alert((r.data||[]).map((x:any)=>`${new Date(x.created_at).toLocaleString()} ${x.action} ${x.entity} ${x.entity_id||""}`).join("\\n")||"No entries");}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">View Recent Activity</button>
+       </div>
+
        </div>
        <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
         <h2 className="font-bold text-white mb-2">Account</h2>
