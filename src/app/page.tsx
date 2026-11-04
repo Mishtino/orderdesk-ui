@@ -371,9 +371,8 @@ export default function DashboardPage(){
         <h2 className="font-bold text-white mb-4">Usage & Plan</h2>
         <button onClick={async()=>{try{const u=await apiJson<any>("/usage");alert(JSON.stringify(u,null,2));}catch(e:any){alert(e.message);}}} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition">View Usage</button>
         <div className="mt-3 flex gap-2">
-         {["free","starter","pro"].map(p=>(
-          <button key={p} onClick={async()=>{try{await apiJson("/settings/plan",{method:"PATCH",body:JSON.stringify({plan:p})});alert("Plan updated to "+p);}catch(e:any){alert(e.message);}}} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-white">{p}</button>
-         ))}
+         <a href="/billing" className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white">Manage subscription</a>
+         <span className="text-xs text-slate-400 self-center">Paid plans activate after verified Paynow payment.</span>
         </div>
        </div>
        <div className="lg:col-span-2 rounded-2xl bg-white/5 border border-white/10 p-5">
